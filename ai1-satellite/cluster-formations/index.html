@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dawn-Dusk Cluster Formations</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a flight-dynamics console. Controls on top, the relative-motion view beside the Earth inset, then the trade table, then the notes. */
+:root {
+  --bg: #eef1f4;
+  --panel: #f8fafb;
+  --ink: #15212c;
+  --muted: #586979;
+  --line: #cfd7df;
+  --grid: #dfe5eb;
+  --laser: #0b7f89;
+  --sun: #c27400;
+  --good: #2b7a4b;
+  --warn: #9a6200;
+  --bad: #b2342a;
+  --sat: #1f4f7a;
+  --earth: #6a8fb0;
+  --night: #263646;
+  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c131a; --panel: #121b24; --ink: #dce5ec; --muted: #8b9cac; --line: #26333f; --grid: #1a2530;
+    --laser: #3cc3cb; --sun: #f0a63a; --good: #5cbf86; --warn: #e2a43c; --bad: #e8685d; --sat: #9cc4e8;
+    --earth: #3f6688; --night: #0a1118; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c131a; --panel: #121b24; --ink: #dce5ec; --muted: #8b9cac; --line: #26333f; --grid: #1a2530;
+  --laser: #3cc3cb; --sun: #f0a63a; --good: #5cbf86; --warn: #e2a43c; --bad: #e8685d; --sat: #9cc4e8;
+  --earth: #3f6688; --night: #0a1118; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--f-display); font-stretch: 85%; font-weight: 800; font-size: clamp(30px, 5vw, 46px); line-height: 1.02; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--f-display); font-stretch: 90%; font-weight: 700; font-size: 22px; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--f-display); font-weight: 700; font-size: 16px; margin: 0; }
+.lede { max-width: 68ch; color: var(--muted); margin: 0; }
+.lede b { color: var(--ink); font-weight: 600; }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px 20px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.ctl { display: grid; gap: 4px; min-width: 0; }
+.ctl label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.ctl label output { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { width: 100%; accent-color: var(--laser); }
+.ctl select { font: inherit; font-size: 14px; padding: 4px 6px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
+.ctl small { color: var(--muted); font-size: 11px; line-height: 1.3; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+@media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.view { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; min-width: 0; }
+#view3d { display: block; width: 100%; cursor: grab; touch-action: none; }
+#view3d:active { cursor: grabbing; }
+.view .tag { position: absolute; left: 12px; top: 10px; display: grid; gap: 2px; pointer-events: none; }
+.view .tag h2 { font-size: 20px; }
+.view .tag span { font-size: 12px; color: var(--muted); }
+.view .hint { position: absolute; right: 12px; bottom: 8px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.side { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+.scene { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .scene { grid-template-columns: minmax(0, 1fr); } }
+#world { display: block; width: 100%; cursor: grab; touch-action: none; }
+#world:active { cursor: grabbing; }
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 14px; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 0 10px; color: var(--muted); }
+.steps li::before { content: counter(step); grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--sun); color: var(--sun); font: 600 12px/19px var(--f-mono); text-align: center; }
+.steps li b { color: var(--ink); font-weight: 600; display: block; }
+.viewbar { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+.viewbar button { font-size: 12px; padding: 4px 9px; background: var(--panel); }
+.viewbar button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.framebar { display: flex; flex-wrap: wrap; gap: 4px; }
+.framebar button { font-size: 12px; padding: 4px 9px; }
+.framebar button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.key { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.key span { display: flex; align-items: center; gap: 6px; }
+.key i { flex: none; width: 14px; height: 10px; border-radius: 2px; }
+.view .hint.center { left: 50%; right: auto; transform: translateX(-50%); bottom: 34px; color: var(--sun); font-size: 12px; text-align: center; }
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.transport { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--laser); }
+button:focus-visible, select:focus-visible, input:focus-visible, tr:focus-visible { outline: 2px solid var(--laser); outline-offset: 2px; }
+#phase { flex: 1; min-width: 120px; accent-color: var(--sun); }
+
+.verdict { display: grid; gap: 6px; padding: 14px 16px; border-left: 3px solid var(--good); background: var(--panel); border-radius: 0 6px 6px 0; }
+.verdict p { margin: 0; max-width: 80ch; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: color-mix(in srgb, var(--laser) 6%, transparent); }
+tbody tr.sel { background: color-mix(in srgb, var(--laser) 12%, transparent); }
+tbody tr:last-child td { border-bottom: 0; }
+td .nm { font-weight: 600; display: block; }
+td .sub { color: var(--muted); font-size: 12px; }
+td .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; display: block; }
+.chip { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; font-weight: 600; letter-spacing: .02em; margin-top: 3px; }
+.chip.good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.chip.bad  { color: var(--bad);  background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.chip.best { color: var(--bg); background: var(--laser); }
+
+.chartcard { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 12px 6px; display: grid; gap: 6px; }
+.chartcard .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); }
+.chartcard .legend i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+#chart { width: 100%; display: block; }
+
+.goal { display: grid; gap: 14px; }
+.goal .goalhead { display: grid; gap: 6px; }
+.goal .goalhead p, .goal .risk { margin: 0; max-width: 78ch; color: var(--muted); }
+.goal b { color: var(--ink); font-weight: 600; }
+.objs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.obj { text-align: left; display: grid; gap: 6px; align-content: start; padding: 12px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
+.obj:hover { border-color: var(--laser); }
+.obj.on { border-color: var(--laser); box-shadow: inset 0 0 0 1px var(--laser); background: color-mix(in srgb, var(--laser) 7%, var(--panel)); }
+.obj .ot { font-family: var(--f-display); font-weight: 700; font-size: 16px; }
+.obj .od { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.obj .om { font-size: 11px; font-family: var(--f-mono); color: var(--muted); }
+.obj .ow { font-size: 12px; font-weight: 600; color: var(--laser); }
+.tilt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .tilt { grid-template-columns: minmax(0, 1fr); } }
+.tilt .tilttext { display: grid; gap: 10px; min-width: 0; }
+.tilt .tilttext p { margin: 0; color: var(--muted); max-width: 65ch; }
+.tilt .tilttext b { color: var(--ink); font-weight: 600; }
+#tiltVerdict { padding: 10px 14px; border-left: 3px solid var(--laser); background: var(--panel); border-radius: 0 6px 6px 0; color: var(--ink) !important; }
+#tiltChart { width: 100%; display: block; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.notes section { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.notes p, .notes li { margin: 0; color: var(--muted); max-width: 65ch; }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.notes b { color: var(--ink); font-weight: 600; }
+.notes code, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+a { color: var(--laser); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Relative-motion study · 600 km dawn-dusk sun-synchronous orbit</div>
+    <h1>How should AI compute satellites fly together?</h1>
+    <p class="lede">Six ways to arrange a cluster of <b>~70 m AI compute satellites</b> riding the day–night line. Each satellite moves on its own orbit, so every shape breathes, drifts or collapses over the 96-minute lap. The view and the scores below come from the Clohessy–Wiltshire equations of relative motion, with the Sun placed where it really sits for a dawn-dusk orbit.</p>
+  </header>
+
+  <section class="scene" aria-label="The geometry of a dawn-dusk orbit">
+    <div class="view">
+      <canvas id="world" aria-label="Earth lit from one side, the dawn-dusk orbit along the day-night line, and the cluster drawn enlarged on it"></canvas>
+      <div class="tag"><h2>The big picture</h2><span>Drag to turn the globe</span></div>
+    </div>
+    <ol class="steps">
+      <li><b>Sunlight comes from one side.</b> The Sun is so far away that its rays arrive parallel. Half of the Earth is in day, half in night.</li>
+      <li><b>The orbit rides the day–night line.</b> A dawn-dusk orbit circles the planet over the line where morning meets evening, so it never passes over noon or midnight. The ring of the orbit faces the Sun, like a hoop held up to a lamp.</li>
+      <li id="step3"></li>
+      <li><b>Below, ride along with the cluster.</b> The close-up keeps the cluster centre still and shows each satellite circling it, with sunlight drawn as parallel amber rays and each solar panel turned to face them.</li>
+    </ol>
+  </section>
+
+  <div class="controls" aria-label="Simulation settings">
+    <div class="ctl"><label for="n">Satellites <output id="nOut"></output></label>
+      <select id="n"><option>7</option><option selected>19</option><option>37</option><option>61</option><option>91</option></select>
+      <small>Hexagonal counts so the discs fill evenly.</small></div>
+    <div class="ctl"><label for="s">Minimum spacing <output id="sOut"></output></label>
+      <input id="s" type="range" min="100" max="600" step="10" value="250"><small>Closest design distance between neighbours.</small></div>
+    <div class="ctl"><label for="span">Satellite span <output id="spanOut"></output></label>
+      <input id="span" type="range" min="20" max="120" step="5" value="70"><small>AI1 is reported at roughly 70 m across.</small></div>
+    <div class="ctl"><label for="L">Laser link range <output id="LOut"></output></label>
+      <input id="L" type="range" min="200" max="3000" step="50" value="1000"><small>Short links carry more bandwidth.</small></div>
+    <div class="ctl"><label for="term">Laser terminals each <output id="termOut"></output></label>
+      <input id="term" type="range" min="2" max="8" step="1" value="4"><small>Assumed; not published for AI1.</small></div>
+    <div class="ctl"><label for="beta">Sun angle β <output id="betaOut"></output></label>
+      <input id="beta" type="range" min="59" max="90" step="1" value="75"><small>Seasonal: 59° at one solstice, 82° at equinox.</small></div>
+  </div>
+
+  <div class="stage">
+    <div class="view">
+      <canvas id="view3d" aria-label="3D view of the selected cluster formation in the orbit frame"></canvas>
+      <div class="tag"><h2 id="fName"></h2><span id="fSub"></span></div>
+      <div class="viewbar" role="group" aria-label="Camera angle">
+        <button type="button" data-view="angled" class="on">Angled</button>
+        <button type="button" data-view="sun">From the Sun</button>
+        <button type="button" data-view="side">Side on</button>
+      </div>
+      <div class="hint center" id="sunHint" hidden>The Sun is behind you. Its light falls straight onto the panels.</div>
+      <div class="hint">Drag to rotate</div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h3>Close-up</h3>
+        <div class="framebar" role="group" aria-label="Reference frame">
+          <button type="button" data-frame="lvlh" class="on">Riding with the cluster</button>
+          <button type="button" data-frame="inertial">Fixed to the stars</button>
+        </div>
+        <div class="key">
+          <span><i style="background:var(--sun);height:2px"></i>Sunlight</span>
+          <span><i style="background:var(--sat)"></i>Solar panel</span>
+          <span><i style="background:var(--bad)"></i>Panel in shadow</span>
+          <span><i style="background:var(--laser);height:2px"></i>Laser link</span>
+          <span><i style="background:var(--grid);border:1px solid var(--line)"></i>Orbital plane</span>
+          <span><i style="background:var(--line);height:2px"></i>Each satellite's loop</span>
+          <span><i style="background:var(--ink);height:2px"></i>S1's loop (followed)</span>
+        </div>
+        <div class="transport">
+          <button id="play" type="button">Pause</button>
+          <input id="phase" type="range" min="0" max="360" step="1" value="0" aria-label="Position in orbit">
+        </div>
+        <dl class="readout">
+          <dt>Time in orbit</dt><dd id="rTime"></dd>
+          <dt>Lighting</dt><dd id="rLight"></dd>
+          <dt>Neighbour distance now</dt><dd id="rNN"></dd>
+          <dt>Panels shaded now</dt><dd id="rShade"></dd>
+          <dt>Orbit period</dt><dd id="rPeriod"></dd>
+          <dt>Inclination (SSO)</dt><dd id="rInc"></dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <section class="goal" aria-labelledby="goalH">
+    <div class="goalhead">
+      <h2 id="goalH">What are we optimizing?</h2>
+      <p>The real target is <b>useful compute per kilogram launched</b>, over the satellite's whole life. Every layout carries the same chips, so the compute each chip gets from a watt is fixed. The formation decides how much sunlight is collected, how well the satellites can share work as one computer, and how much fuel and risk that costs. Pick a goal and the table re-ranks.</p>
+    </div>
+    <div class="objs" role="radiogroup" aria-label="Optimize for">
+      <button type="button" class="obj on" data-obj="balanced" role="radio" aria-checked="true"><span class="ot">Balanced</span><span class="od">Meet every limit, all year, with the fewest compromises.</span><span class="om">Counts passes, warnings and fails</span><span class="ow" id="w-balanced"></span></button>
+      <button type="button" class="obj" data-obj="compute" role="radio" aria-checked="false"><span class="ot">Compute out</span><span class="od">Make the satellites act as one computer. Laser bandwidth falls with the square of distance, and every relay hop spends that bandwidth again, so short links and few hops win.</span><span class="om">Link bandwidth ÷ average hops</span><span class="ow" id="w-compute"></span></button>
+      <button type="button" class="obj" data-obj="energy" role="radio" aria-checked="false"><span class="ot">Energy in</span><span class="od">Collect every watt. The orbit already gives everyone about 98% sunlight, so a layout can only lose energy, by shading its neighbours.</span><span class="om">Panel shading, now and at the solstice</span><span class="ow" id="w-energy"></span></button>
+      <button type="button" class="obj" data-obj="fuel" role="radio" aria-checked="false"><span class="ot">Fuel spent</span><span class="od">Hold the shape with the least propellant. Fuel sets how long the cluster can stay in formation.</span><span class="om">Δv per year</span><span class="ow" id="w-fuel"></span></button>
+    </div>
+    <p class="risk"><b>Safety is never traded.</b> Under every goal, a layout is ruled out if two satellites come within one span of each other, or if its laser network breaks apart.</p>
+  </section>
+
+  <div class="verdict" id="verdict" aria-live="polite"></div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>Formation</th><th>Closest approach</th><th>Panel shading</th><th>Laser network</th><th>Δv to hold shape</th><th>Cluster size</th><th>Verdict</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="chartcard">
+    <h3 id="chartTitle">Over one orbit</h3>
+    <div class="legend">
+      <span><i style="background:color-mix(in srgb,var(--laser) 30%,transparent)"></i>Laser link lengths, shortest to longest</span>
+      <span><i style="background:var(--muted);height:2px"></i>Link range limit</span>
+      <span><i style="background:var(--bad);height:2px"></i>Panel area shaded (mean)</span>
+      <span><i style="background:var(--night)"></i>Earth's shadow</span>
+    </div>
+    <canvas id="chart" aria-label="Chart of link lengths and shading over one orbit"></canvas>
+  </div>
+
+  <section class="tilt" aria-labelledby="tiltH">
+    <div class="tilttext">
+      <h2 id="tiltH">Is the flat disc the best disc?</h2>
+      <p><b>Inside the flat disc, satellites do move relative to each other.</b> The outline stays fixed: an oval twice as long along-track as it is tall. Inside it, every satellite circles the centre once per orbit, all in the same plane. Because those circles are stretched 2:1, neighbours slide from <span id="tMin"></span> apart to <span id="tMax"></span> and back twice per orbit. The outer satellites move fastest, up to about <span id="tSpeed"></span> relative to the centre. Every laser has to keep re-pointing, but no two paths ever cross.</p>
+      <p><b>This is the same motion as Google's Suncatcher cluster.</b> Satellites there don't swap places either: each keeps the same neighbours, and the shape breathes twice per orbit, so a different satellite sits at the tips of the oval each time. Google draws it in a frame fixed to the stars, where the whole oval also turns once per orbit. Switch the close-up to <b>Fixed to the stars</b> and follow S1 to see it their way.</p>
+      <p><b>It is not the most compact disc.</b> Tilt the disc toward the Sun and the stretch shrinks. At 60° every satellite flies a true circle, the gaps never change, and the cluster is half the size. The catch is the seasons. At one solstice the Sun sits only 59° above the orbit's plane, and then it shines along a steeply tilted disc and satellites shade each other.</p>
+      <p id="tiltVerdict"></p>
+    </div>
+    <div class="chartcard">
+      <h3>Tilting the disc toward the Sun</h3>
+      <div class="legend">
+        <span><i style="background:var(--laser);height:2px"></i>Cluster radius</span>
+        <span><i style="background:var(--bad);height:2px"></i>Panel area shaded at the solstice (mean)</span>
+        <span><i style="background:var(--sun);height:2px"></i>Best tilt</span>
+      </div>
+      <canvas id="tiltChart" aria-label="Chart of cluster radius and solstice shading against disc tilt"></canvas>
+    </div>
+  </section>
+
+  <div class="notes">
+    <section>
+      <h2>What the physics says</h2>
+      <p><b>The orbit faces the Sun.</b> In a dawn-dusk orbit the orbital plane follows the day–night line, so sunlight strikes that plane nearly square on. A neighbour beside you in the plane leaves your light alone. A neighbour off the plane, toward the Sun, sits in your sunlight.</p>
+      <p><b>Altitude differences drift.</b> A satellite only 100 m higher circles more slowly and falls behind by about 940 m every orbit. Holding a fixed radial stack would take continuous thrust.</p>
+      <p><b>The free shapes are ellipses.</b> A satellite that starts slightly off the reference orbit traces a 2:1 ellipse around it, twice as long along-track as it is tall. Satellites placed on nested ellipses with the same phase rotate together like a wheel and never cross.</p>
+      <p><b>Cross-track offsets cross twice per orbit.</b> Offsets made by tilting the orbit all pass through zero at the same moment, unless they are paired with an along-track or radial offset.</p>
+    </section>
+    <section>
+      <h2>How each score is worked out</h2>
+      <ul>
+        <li><b>Closest approach</b> is the minimum centre-to-centre distance of any pair over one orbit. Red below one satellite span, amber below two.</li>
+        <li><b>Panel shading</b> treats each array as a sun-facing disc the size of the satellite and measures how much of it a sunward neighbour covers. Penumbra and Earth albedo are ignored.</li>
+        <li><b>Laser network</b> fixes one link plan for the whole orbit, picking the pairs whose worst-case distance is shortest, up to the terminal limit. Hops is the longest shortest path across the cluster.</li>
+        <li><b>Δv to hold shape</b> is a rough yearly budget. In-plane ellipses use the ~3 m/s per year per km figure from the Suncatcher study. Cross-track motion made by inclination offsets is charged for J2 differential precession. A radial stack is charged for the thrust that stops it drifting.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>What this leaves out</h2>
+      <ul>
+        <li>Orbits are circular and two-body, with J2 only in the Δv estimate. Drag is ignored because identical satellites feel it equally.</li>
+        <li>AI1 dimensions are public estimates. The satellite count, terminal count and link range are assumptions to explore, not SpaceX figures.</li>
+        <li>Radiator view, line-of-sight blocking by a third satellite, and plume impingement are not modelled.</li>
+      </ul>
+      <p>Prior work: Google's <a href="https://arxiv.org/abs/2511.19468" target="_blank" rel="noopener">Project Suncatcher paper</a> (81 satellites, 1 km radius, 650 km dawn-dusk) and <a href="https://arxiv.org/abs/2605.15335" target="_blank" rel="noopener">Designing Dense Satellite Clusters for Space-based Datacenters</a>, which compares planar and 3D packings.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- Orbit constants ----------
+const MU = 3.986004418e14, RE = 6378137, J2 = 1.08263e-3, ALT = 600e3;
+const A = RE + ALT, n = Math.sqrt(MU / A ** 3), T = 2 * Math.PI / n, V = Math.sqrt(MU / A);
+const YEAR = 365.25 * 86400;
+const OMEGA_SSO = 2 * Math.PI / (365.2422 * 86400);
+const J2K = 1.5 * n * J2 * (RE / A) ** 2;            // nodal regression factor
+const INC = Math.acos(-OMEGA_SSO / J2K);               // sun-synchronous inclination
+const BETA_ECL = Math.asin(RE / A);                     // below this β the orbit sees eclipses
+
+// ---------- Hexagonal lattice, unit spacing ----------
+function hexPoints(N) {
+  const pts = [];
+  for (let q = -8; q <= 8; q++) for (let r = -8; r <= 8; r++) {
+    const s = -q - r; if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) > 7) continue;
+    const X = q + r / 2, Y = r * Math.sqrt(3) / 2;
+    pts.push({ X, Y, ring: Math.max(Math.abs(q), Math.abs(r), Math.abs(s)), ang: Math.atan2(Y, X) });
+  }
+  pts.sort((a, b) => a.ring - b.ring || a.ang - b.ang);
+  return pts.slice(0, N);
+}
+
+// In-plane free motion: (x, y/2) rotates rigidly.  x radial, y along-track, z cross-track.
+function inPlane(X, Y, th, o) { const c = Math.cos(th), s = Math.sin(th); o[0] = X * c + Y * s; o[1] = 2 * (-X * s + Y * c); o[2] = 0; }
+// Circular relative orbit: rigid rotation in a plane tilted 60° out of the orbital plane.
+function circular(X, Y, th, o) { const c = Math.cos(th), s = Math.sin(th); const w = X * c + Y * s, v = -X * s + Y * c; o[0] = w / 2; o[1] = v; o[2] = w * Math.sqrt(3) / 2; }
+
+// Each formation: build(P) -> { N, pos(k, theta, out), dv(stats) in m/s per year }
+const FORMS = [
+  { id: 'disc', name: 'In-plane disc', sub: 'Nested 2:1 ellipses in the orbital plane',
+    build(P) { const h = hexPoints(P.N).map(p => ({ X: p.X * P.s, Y: p.Y * P.s }));
+      return { pos: (k, th, o) => inPlane(h[k].X, h[k].Y, th, o), dv: st => 3 * st.rmax / 1000 }; } },
+  { id: 'tuned', name: 'Tuned tilt disc', sub: 'Disc tilted toward the Sun as far as the seasons allow',
+    build(P) { const k = Math.tan((P.tilt || 0) * Math.PI / 180), g = 1 / Math.sqrt(1 + k * k);
+      const h = hexPoints(P.N).map(p => ({ X: p.X * P.s * g, Y: p.Y * P.s * g }));
+      return { pos: (i, th, o) => { inPlane(h[i].X, h[i].Y, th, o); o[2] = k * o[0]; }, dv: st => 3 * st.rmax / 1000 + inclDv(st.zmax) }; } },
+  { id: 'train', name: 'Along-track train', sub: 'One behind the other on the same orbit',
+    build(P) { const mid = (P.N - 1) / 2;
+      return { pos: (k, th, o) => { o[0] = 0; o[1] = (k - mid) * P.s; o[2] = 0; }, dv: () => 0 }; } },
+  { id: 'ring', name: 'Cartwheel ring', sub: 'Everyone on one shared 2:1 ellipse',
+    build(P) { const rho = P.s / (2 * Math.sin(Math.PI / P.N));
+      return { pos: (k, th, o) => { const a = 2 * Math.PI * k / P.N; inPlane(rho * Math.cos(a), rho * Math.sin(a), th, o); }, dv: st => 3 * st.rmax / 1000 }; } },
+  { id: 'tilted', name: 'Tilted rigid disc', sub: 'Circular relative orbits, constant spacing',
+    build(P) { const h = hexPoints(P.N).map(p => ({ X: p.X * P.s, Y: p.Y * P.s }));
+      return { pos: (k, th, o) => circular(h[k].X, h[k].Y, th, o),
+        dv: st => 3 * st.rmax / 1000 + inclDv(st.zmax) }; } },
+  { id: 'fence', name: 'Cross-track fence', sub: 'Side by side, offset by inclination',
+    build(P) { const mid = (P.N - 1) / 2;
+      return { pos: (k, th, o) => { o[0] = 0; o[1] = 0; o[2] = (k - mid) * P.s * Math.cos(th); }, dv: st => inclDv(st.zmax) }; } },
+  { id: 'stack', name: 'Radial stack', sub: 'One above the other at fixed altitude steps',
+    build(P) { const mid = (P.N - 1) / 2;
+      return { pos: (k, th, o) => { const x = (k - mid) * P.s; o[0] = x; o[1] = -1.5 * x * th; o[2] = 0; },
+        dv: () => 3 * n * n * ((P.N - 1) / 2 * P.s) * YEAR }; } },
+];
+// Yearly Δv to cancel J2 differential nodal drift for a cross-track amplitude b made by an inclination offset.
+function inclDv(b) { const dOmegaDot = J2K * Math.sin(INC) * (b / A); return V * Math.sin(INC) * dOmegaDot * YEAR; }
+
+// Sun direction in the orbit frame at argument of latitude u (u = 0 nearest the Sun).
+function sunDir(beta, u, o) { const cb = Math.cos(beta); o[0] = cb * Math.cos(u); o[1] = -cb * Math.sin(u); o[2] = Math.sin(beta); }
+function inEclipse(beta, u) { const c = Math.cos(beta) * Math.cos(u); return c < 0 && A * Math.sqrt(1 - c * c) < RE; }
+// Fraction of a disc of radius R covered by an equal disc offset by d.
+function lens(d, R) { if (d >= 2 * R) return 0; return (2 * R * R * Math.acos(d / (2 * R)) - (d / 2) * Math.sqrt(4 * R * R - d * d)) / (Math.PI * R * R); }
+
+// Shading of each satellite at one instant.
+function shadingAt(pos, N, sun, R, out) {
+  for (let i = 0; i < N; i++) {
+    let f = 0;
+    for (let j = 0; j < N; j++) { if (i === j) continue;
+      const dx = pos[3*j] - pos[3*i], dy = pos[3*j+1] - pos[3*i+1], dz = pos[3*j+2] - pos[3*i+2];
+      const along = dx * sun[0] + dy * sun[1] + dz * sun[2]; if (along <= 0) continue;
+      const px = dx - along * sun[0], py = dy - along * sun[1], pz = dz - along * sun[2];
+      f += lens(Math.hypot(px, py, pz), R);
+    }
+    out[i] = Math.min(1, f);
+  }
+}
+
+const M = 120; // samples per orbit
+function evaluate(form, P) {
+  const N = P.N, F = form.build(P), beta = P.beta * Math.PI / 180, R = P.span / 2;
+  const pos = []; const o = [0, 0, 0];
+  let rmax = 0, zmax = 0;
+  for (let m = 0; m < M; m++) { const th = 2 * Math.PI * m / M, a = new Float64Array(3 * N);
+    for (let k = 0; k < N; k++) { F.pos(k, th, o); a[3*k] = o[0]; a[3*k+1] = o[1]; a[3*k+2] = o[2];
+      rmax = Math.max(rmax, Math.hypot(o[0], o[1], o[2])); zmax = Math.max(zmax, Math.abs(o[2])); }
+    pos.push(a); }
+  // Pair distances over the orbit
+  const P2 = N * (N - 1) / 2, dmax = new Float64Array(P2), dmin = new Float64Array(P2).fill(Infinity), pi = new Int32Array(P2), pj = new Int32Array(P2);
+  let p = 0; for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) { pi[p] = i; pj[p] = j; p++; }
+  let minSep = Infinity;
+  for (let m = 0; m < M; m++) { const a = pos[m];
+    for (let q = 0; q < P2; q++) { const i = pi[q], j = pj[q];
+      const d = Math.hypot(a[3*i] - a[3*j], a[3*i+1] - a[3*j+1], a[3*i+2] - a[3*j+2]);
+      if (d > dmax[q]) dmax[q] = d; if (d < dmin[q]) dmin[q] = d; } }
+  for (let q = 0; q < P2; q++) minSep = Math.min(minSep, dmin[q]);
+  // Fixed link plan: shortest worst-case pairs first, within range, up to the terminal limit.
+  const cand = []; for (let q = 0; q < P2; q++) if (dmax[q] <= P.L) cand.push(q);
+  cand.sort((a, b) => dmax[a] - dmax[b]);
+  const deg = new Int32Array(N), links = [], adj = Array.from({ length: N }, () => []);
+  for (const q of cand) { const i = pi[q], j = pj[q]; if (deg[i] < P.term && deg[j] < P.term) { deg[i]++; deg[j]++; links.push(q); adj[i].push(j); adj[j].push(i); } }
+  // Hop diameter
+  let diam = 0, connected = true, hopSum = 0;
+  for (let s0 = 0; s0 < N && connected; s0++) { const dist = new Int32Array(N).fill(-1); dist[s0] = 0; const qu = [s0];
+    for (let h = 0; h < qu.length; h++) for (const v of adj[qu[h]]) if (dist[v] < 0) { dist[v] = dist[qu[h]] + 1; qu.push(v); }
+    if (qu.length < N) connected = false; else for (let k = 0; k < N; k++) { diam = Math.max(diam, dist[k]); hopSum += dist[k]; } }
+  const meanHops = connected && N > 1 ? hopSum / (N * (N - 1)) : Infinity;
+  // Link lengths and shading per sample
+  const series = []; const sun = [0, 0, 0], sh = new Float64Array(N);
+  let shadeSum = 0, shadeCount = 0, shadeWorst = 0, bwSum = 0;
+  for (let m = 0; m < M; m++) { const th = 2 * Math.PI * m / M, a = pos[m];
+    let lo = Infinity, hi = 0;
+    for (const q of links) { const i = pi[q], j = pj[q]; const d = Math.hypot(a[3*i] - a[3*j], a[3*i+1] - a[3*j+1], a[3*i+2] - a[3*j+2]); lo = Math.min(lo, d); hi = Math.max(hi, d); bwSum += Math.min(1, (P.s / d) ** 2); }
+    const ecl = inEclipse(beta, th); let mean = 0;
+    if (!ecl) { sunDir(beta, th, sun); shadingAt(a, N, sun, R, sh);
+      for (let k = 0; k < N; k++) { mean += sh[k]; shadeWorst = Math.max(shadeWorst, sh[k]); }
+      mean /= N; shadeSum += mean; shadeCount++; }
+    series.push({ lo: links.length ? lo : NaN, hi: links.length ? hi : NaN, shade: mean, ecl }); }
+  let lmin = Infinity, lmax = 0; for (const q of links) { lmin = Math.min(lmin, dmin[q]); lmax = Math.max(lmax, dmax[q]); }
+  const st = { rmax, zmax };
+  return { F, minSep, links: links.length, avgDeg: 2 * links.length / N, connected, diam, lmin, lmax,
+    shadeMean: shadeCount ? shadeSum / shadeCount : 0, shadeWorst, dv: F.dv(st), rmax, series, sunlitFrac: shadeCount / M, bw: links.length ? bwSum / links.length / M : 0, meanHops };
+}
+// Shading and size only: cheaper, for the season check and the tilt sweep.
+function shadeEval(form, P, Ms = 72) {
+  const N = P.N, F = form.build(P), beta = P.beta * Math.PI / 180, R = P.span / 2, a = new Float64Array(3 * N), o = [0, 0, 0], sun = [0, 0, 0], sh = new Float64Array(N);
+  let sum = 0, cnt = 0, worst = 0, rmax = 0;
+  for (let m = 0; m < Ms; m++) { const th = 2 * Math.PI * m / Ms;
+    for (let k = 0; k < N; k++) { F.pos(k, th, o); a[3*k] = o[0]; a[3*k+1] = o[1]; a[3*k+2] = o[2]; rmax = Math.max(rmax, Math.hypot(o[0], o[1], o[2])); }
+    if (inEclipse(beta, th)) continue; sunDir(beta, th, sun); shadingAt(a, N, sun, R, sh);
+    let mean = 0; for (let k = 0; k < N; k++) { mean += sh[k]; worst = Math.max(worst, sh[k]); } sum += mean / N; cnt++; }
+  return { shadeMean: cnt ? sum / cnt : 0, shadeWorst: worst, rmax };
+}
+
+// ---------- Grading ----------
+function grade(r, P) {
+  const g = {};
+  r.sMean = Math.max(r.shadeMean, r.season.shadeMean); r.sWorst = Math.max(r.shadeWorst, r.season.shadeWorst);
+  g.col = r.minSep < P.span ? 'bad' : r.minSep < 2 * P.span ? 'warn' : 'good';
+  g.shade = r.sMean > 0.05 ? 'bad' : (r.sMean > 0.005 || r.sWorst > 0.1) ? 'warn' : 'good';
+  g.net = !r.connected ? 'bad' : r.diam > Math.max(4, 1.5 * Math.sqrt(P.N)) ? 'warn' : 'good';
+  g.dv = r.dv >= 100 ? 'bad' : r.dv >= 10 ? 'warn' : 'good';
+  const vals = Object.values(g);
+  g.fails = vals.filter(v => v === 'bad').length; g.warns = vals.filter(v => v === 'warn').length;
+  g.overall = g.fails ? 'bad' : g.warns ? 'warn' : 'good';
+  return g;
+}
+
+// ---------- Formatting ----------
+const fmtM = m => !isFinite(m) ? '–' : m >= 10000 ? (m / 1000).toFixed(0) + ' km' : m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
+const fmtPct = f => f === 0 ? '0%' : f < 0.001 ? '<0.1%' : (f * 100).toFixed(f < 0.1 ? 1 : 0) + '%';
+const fmtDv = v => v < 0.05 ? '≈0 m/s/yr' : v < 10 ? v.toFixed(1) + ' m/s/yr' : v < 10000 ? Math.round(v).toLocaleString() + ' m/s/yr' : (v / 1000).toFixed(0) + ' km/s/yr';
+const LBL = { good: 'OK', warn: 'Marginal', bad: 'Fails' };
+const chip = (cls, txt) => `<span class="chip ${cls}">${txt ?? LBL[cls]}</span>`;
+
+// ---------- State ----------
+const $ = id => document.getElementById(id);
+const P = {}; let results = [], grades = [], sel = 0, best = 0, phase = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+let yaw = 1.0, pitch = 0.35, objective = 'balanced', sweep = [], winners = {};
+const BETA_MIN = 59; // lowest Sun angle of the year for a 600 km dawn-dusk orbit
+// All-to-all throughput: every bit uses bandwidth on each hop, and shaded power is lost.
+const netScore = r => r.connected ? r.bw / r.meanHops * (1 - r.sMean) : 0;
+const hard = (r, g) => (g.col === 'bad' || !r.connected) ? 1 : 0;
+const OBJ = {
+  balanced: { name: 'Balanced', key: (r, g) => [g.fails, g.warns, r.diam, Math.round(r.rmax)] },
+  compute: { name: 'Compute out', key: (r, g) => [hard(r, g), g.shade === 'bad' ? 1 : 0, -Math.round(netScore(r) * 1000), r.diam] },
+  energy: { name: 'Energy in', key: (r, g) => [hard(r, g), Math.round(r.sMean * 1e4), Math.round(r.sWorst * 100), Math.round(r.dv * 10)] },
+  fuel: { name: 'Fuel spent', key: (r, g) => [hard(r, g), g.shade === 'bad' ? 1 : 0, Math.round(r.dv * 10), r.diam] },
+};
+const TIE = { balanced: 4, compute: 3, energy: 3, fuel: 3 }; // keys that decide the goal; the rest only break ties
+function ties(obj) { const w = winners[obj], K = OBJ[obj].key(results[w], grades[w]).slice(0, TIE[obj]);
+  return FORMS.map((_, i) => i).filter(i => { const k = OBJ[obj].key(results[i], grades[i]); return K.every((v, j) => v === k[j]); }); }
+function rank(obj) { return FORMS.map((_, i) => i).sort((a, b) => { const A = OBJ[obj].key(results[a], grades[a]), B = OBJ[obj].key(results[b], grades[b]);
+  for (let k = 0; k < A.length; k++) if (A[k] !== B[k]) return A[k] - B[k]; return 0; }); }
+// Find the steepest tilt that keeps panels unshaded at the worst season.
+function tiltSweep() {
+  const T = FORMS.find(f => f.id === 'tuned'), ok = r => r.shadeMean <= 0.001 && r.shadeWorst <= 0.05;
+  sweep = []; let bestD = 0, stop = false;
+  for (let d = 0; d <= 60; d += 5) { const r = shadeEval(T, { ...P, tilt: d, beta: BETA_MIN });
+    sweep.push({ d, rmax: r.rmax, sh: r.shadeMean }); if (!stop && ok(r)) bestD = d; else stop = true; }
+  for (let d = bestD + 1; d < bestD + 5 && d <= 60; d++) { if (ok(shadeEval(T, { ...P, tilt: d, beta: BETA_MIN }))) bestD = d; else break; }
+  P.tilt = bestD;
+}
+
+function readP() {
+  P.N = +$('n').value; P.s = +$('s').value; P.span = +$('span').value; P.L = +$('L').value; P.term = +$('term').value; P.beta = +$('beta').value;
+  $('nOut').textContent = P.N; $('sOut').textContent = P.s + ' m'; $('spanOut').textContent = P.span + ' m';
+  $('LOut').textContent = fmtM(P.L); $('termOut').textContent = P.term; $('betaOut').textContent = P.beta + '°' + (P.beta * Math.PI / 180 < BETA_ECL ? ' · eclipses' : '');
+}
+
+function recompute() {
+  readP();
+  tiltSweep();
+  FORMS.find(f => f.id === 'tuned').sub = `Disc tilted ${P.tilt}° toward the Sun, the most the solstice allows`;
+  results = FORMS.map(f => { const r = evaluate(f, P); r.season = shadeEval(f, { ...P, beta: BETA_MIN }); return r; });
+  grades = results.map(r => grade(r, P));
+  for (const k in OBJ) winners[k] = rank(k)[0];
+  best = winners[objective];
+  renderTable(); renderVerdict(); renderObjectives(); renderTilt(); earthDirty = true; selectForm(sel, false);
+}
+
+function renderTable() {
+  $('tbody').innerHTML = FORMS.map((f, i) => { const r = results[i], g = grades[i];
+    return `<tr data-i="${i}" tabindex="0" class="${i === sel ? 'sel' : ''}" aria-selected="${i === sel}">
+      <td><span class="nm">${f.name}</span><span class="sub">${f.sub}</span></td>
+      <td><span class="v">${fmtM(r.minSep)}</span>${chip(g.col)}</td>
+      <td><span class="v">${fmtPct(r.shadeMean)} now · ${fmtPct(r.season.shadeMean)} solstice</span>${chip(g.shade)}</td>
+      <td><span class="v">${r.connected ? r.diam + ' hops · ' + fmtM(r.lmin) + '–' + fmtM(r.lmax) + '<br>' + Math.round(r.bw * 100) + '% link bandwidth · ' + r.meanHops.toFixed(1) + ' avg hops' : 'breaks apart'}</span>${chip(g.net)}</td>
+      <td><span class="v">${fmtDv(r.dv)}</span>${chip(g.dv)}</td>
+      <td><span class="v">${fmtM(r.rmax)} radius</span></td>
+      <td>${i === best ? chip('best', 'Best for ' + OBJ[objective].name.toLowerCase()) : hard(r, g) ? chip('bad', 'Ruled out') : chip(g.overall, g.overall === 'good' ? 'Viable' : g.overall === 'warn' ? 'Trade-offs' : 'Ruled out')}</td>
+    </tr>`; }).join('');
+  for (const tr of $('tbody').rows) { const go = () => selectForm(+tr.dataset.i, true);
+    tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); }
+}
+
+function renderVerdict() {
+  const f = FORMS[best], r = results[best];
+  const why = {
+    disc: `Every satellite rides its own 2:1 ellipse in the orbital plane, so the cluster turns like a wheel without anyone crossing paths. The disc lies in the orbital plane, and that plane faces the Sun, so the satellites sit side by side like panels in a solar farm. Nobody stands in a neighbour's light, and the whole network is ${r.diam} hops across with links between ${fmtM(r.lmin)} and ${fmtM(r.lmax)}. This is the layout Google's Suncatcher study settled on.`,
+    train: `A string of satellites on the same orbit costs almost nothing to hold and never shades, because the sunlight falls across the string, not along it. The price is length: ${P.N} satellites stretch ${fmtM(2 * r.rmax)} and data crosses ${r.diam} hops end to end.`,
+    ring: `A single shared ellipse is passively safe and sun-friendly, but everyone is on the rim, so the network is ${r.diam} hops across.`,
+    tilted: `Circular relative orbits keep every gap constant, which suits fixed laser links, and the cluster is half the size of the flat disc.`,
+    tuned: `Tilting the flat disc ${P.tilt}° toward the Sun shrinks it to ${fmtM(r.rmax)} radius, so links are shorter (${fmtM(r.lmin)} to ${fmtM(r.lmax)}) and carry more bandwidth, while no panel is shaded even at the solstice. It pays for that in fuel: the out-of-plane motion costs about ${fmtDv(r.dv)}.`,
+    fence: `The fence wins only because the others fail harder at these settings.`,
+    stack: `The radial stack wins only because the others fail harder at these settings.`,
+  }[f.id];
+  const second = rank(objective)[1];
+  const elsewhere = Object.keys(OBJ).filter(k => k !== objective && winners[k] !== best).map(k => `<b style="color:var(--ink)">${FORMS[winners[k]].name}</b> for ${OBJ[k].name.toLowerCase()}`);
+  $('verdict').innerHTML = `<div class="eyebrow">Best for ${OBJ[objective].name.toLowerCase()} at these settings</div><h2>${f.name}</h2><p>${why}</p>` +
+    (ties(objective).length > 1 ? `<p style="color:var(--muted)">On this goal it ties with ${ties(objective).filter(i => i !== best).map(i => `<b style="color:var(--ink)">${FORMS[i].name}</b>`).join(' and ')}, and wins the tie on the next criterion.</p>` : '') +
+    `<p style="color:var(--muted)">Runner-up: <b style="color:var(--ink)">${FORMS[second].name}</b>.` +
+    (elsewhere.length ? ` Other goals pick ${elsewhere.join(', ')}.` : ' It also wins every other goal.') + ` Click any row to fly it.</p>`;
+}
+function renderObjectives() {
+  document.querySelectorAll('.obj').forEach(b => { const on = b.dataset.obj === objective; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  for (const k in OBJ) { const t = ties(k); $('w-' + k).textContent = t.length > 1 ? 'Tie: ' + t.map(i => FORMS[i].name).join(', ') : 'Best: ' + FORMS[winners[k]].name; }
+}
+function renderTilt() {
+  const flat = results[FORMS.findIndex(f => f.id === 'disc')], tun = results[FORMS.findIndex(f => f.id === 'tuned')];
+  const A = flat.rmax / 2; // radial half-size of the flat disc's outline
+  $('tMin').textContent = fmtM(flat.lmin); $('tMax').textContent = fmtM(Math.min(2 * P.s, flat.lmax));
+  $('tSpeed').textContent = (2 * n * A).toFixed(1) + ' m/s';
+  const rule = BETA_MIN - Math.asin(Math.min(1, P.span / P.s)) * 180 / Math.PI;
+  $('tiltVerdict').innerHTML = P.tilt === 0
+    ? `<b>At these settings the flat disc is the best disc.</b> Satellites ${P.span} m across, ${P.s} m apart, cannot tilt at all without shading each other at the solstice. Rule of thumb: tilt below 59° − asin(span ÷ spacing) = ${Math.max(0, rule).toFixed(0)}°.`
+    : `<b>For ${P.span} m satellites spaced ${P.s} m apart, the best tilt is about ${P.tilt}°.</b> It shrinks the cluster from ${fmtM(flat.rmax)} to ${fmtM(tun.rmax)} radius and the longest link from ${fmtM(flat.lmax)} to ${fmtM(tun.lmax)}, with no shading even at the solstice. Rule of thumb: tilt below 59° − asin(span ÷ spacing) = ${rule.toFixed(0)}°. The price is fuel, about ${fmtDv(tun.dv)} instead of ${fmtDv(flat.dv)}. It is the <b>Tuned tilt disc</b> row in the table.`;
+  drawTilt();
+}
+function drawTilt() {
+  const c = $('tiltChart'); if (!c.clientWidth || !sweep.length) return;
+  const d = window.devicePixelRatio || 1, w = c.clientWidth, h = 200; c.width = Math.round(w * d); c.height = Math.round(h * d); c.style.height = h + 'px';
+  const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
+  const L = 54, R = 46, top = 10, bot = 26, pw = w - L - R, ph = h - top - bot;
+  const rm = Math.max(...sweep.map(p => p.rmax)) * 1.1, sm = Math.max(0.05, ...sweep.map(p => p.sh)) * 1.1;
+  const X = v => L + pw * v / 60, Y = v => top + ph * (1 - v / rm), YS = v => top + ph * (1 - v / sm);
+  x.font = `11px ${css('--f-mono')}`; x.fillStyle = css('--muted'); x.strokeStyle = css('--grid'); x.lineWidth = 1; x.textAlign = 'right';
+  const st = niceStep(rm / 4); for (let v = 0; v <= rm; v += st) { x.beginPath(); x.moveTo(L, Y(v)); x.lineTo(L + pw, Y(v)); x.stroke(); x.fillText(fmtM(v), L - 6, Y(v) + 4); }
+  x.textAlign = 'center'; for (let v = 0; v <= 60; v += 10) x.fillText(v + '°', X(v), h - 8);
+  x.fillStyle = css('--sun'); x.globalAlpha = 0.18; x.fillRect(X(P.tilt) - 1, top, 2, ph); x.globalAlpha = 1;
+  x.strokeStyle = css('--sun'); x.lineWidth = 2; x.beginPath(); x.moveTo(X(P.tilt), top); x.lineTo(X(P.tilt), top + ph); x.stroke();
+  x.textAlign = P.tilt > 45 ? 'right' : 'left'; x.fillText('best ' + P.tilt + '°', X(P.tilt) + (P.tilt > 45 ? -6 : 6), top + 12);
+  const plot = (f, col) => { x.strokeStyle = col; x.lineWidth = 2; x.beginPath(); sweep.forEach((p, i) => i ? x.lineTo(X(p.d), f(p)) : x.moveTo(X(p.d), f(p))); x.stroke();
+    x.fillStyle = col; sweep.forEach(p => { x.beginPath(); x.arc(X(p.d), f(p), 2.5, 0, 2 * Math.PI); x.fill(); }); };
+  plot(p => Y(p.rmax), css('--laser')); plot(p => YS(p.sh), css('--bad'));
+  x.fillStyle = css('--bad'); x.textAlign = 'left'; x.fillText('0%', L + pw + 6, YS(0) + 4); x.fillText(fmtPct(sm / 1.1), L + pw + 6, YS(sm / 1.1) + 4);
+}
+
+const STEP3 = {
+  disc: '<b>The cluster is a flat disc lying in that ring.</b><span>Here it is drawn about <span class="mag"></span> larger than life. Because the ring faces the Sun, the disc faces the Sun too. The satellites sit side by side like panels in a solar farm, and none stands in another\'s light.</span>',
+  train: '<b>The cluster is a line along the ring.</b><span>Drawn about <span class="mag"></span> larger than life. The sunlight falls across the line, so no satellite is in front of another, but the line is long.</span>',
+  ring: '<b>The cluster is a single loop lying in the ring.</b><span>Drawn about <span class="mag"></span> larger than life. Like the disc, it faces the Sun, so nobody is shaded.</span>',
+  tilted: '<b>The cluster is a disc tilted 60° out of the ring.</b><span>Drawn about <span class="mag"></span> larger than life. The tilt turns it partly edge-on to the Sun, so at some moments a satellite sits in a neighbour\'s light.</span>',
+  tuned: '<b>The cluster is a disc tilted {tilt}° toward the Sun.</b><span>Drawn about <span class="mag"></span> larger than life. The small tilt makes it more compact than the flat disc, but stays shallow enough that no satellite sits in a neighbour\'s light, even at the solstice.</span>',
+  fence: '<b>The cluster is a line pointing at the Sun.</b><span>Drawn about <span class="mag"></span> larger than life. Each satellite stands in the next one\'s light, like people queueing in front of a lamp.</span>',
+  stack: '<b>The cluster is a column pointing at the Earth.</b><span>Drawn about <span class="mag"></span> larger than life. Each level circles at a different speed, so the column smears out along the ring.</span>',
+};
+function selectForm(i, fromUser) {
+  sel = i; $('step3').innerHTML = STEP3[FORMS[i].id].replace('{tilt}', P.tilt);
+  for (const tr of $('tbody').rows) { const on = +tr.dataset.i === i; tr.classList.toggle('sel', on); tr.setAttribute('aria-selected', on); }
+  $('fName').textContent = FORMS[i].name; $('fSub').textContent = FORMS[i].sub;
+  $('chartTitle').textContent = FORMS[i].name + ' over one orbit';
+  buildPaths(); drawChart();
+}
+
+// ---------- 3D view ----------
+const cv = $('view3d'), ctx = cv.getContext('2d');
+let paths = [], scale = 1, W = 0, H = 0, dpr = 1;
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function buildPaths() {
+  const F = results[sel].F, o = [0, 0, 0]; paths = [];
+  for (let k = 0; k < P.N; k++) { const pts = []; for (let m = 0; m <= 72; m++) { const t = 2 * Math.PI * m / 72; F.pos(k, t, o); pts.push([o[0], o[1], o[2], t]); } paths.push(pts); }
+  const r0 = paths.map(p => Math.hypot(p[0][0], p[0][1], p[0][2]));
+  s0 = r0.indexOf(Math.min(...r0)); s1 = r0.indexOf(Math.max(...r0));
+}
+let refFrame = 'lvlh', s0 = 0, s1 = 0;
+// Turn orbit-frame coordinates into a frame fixed to the stars (rotate by the orbit angle about the orbit normal).
+const R2 = (v, t) => t ? [v[0] * Math.cos(t) - v[1] * Math.sin(t), v[0] * Math.sin(t) + v[1] * Math.cos(t), v[2]] : v;
+function setFrame(f) { refFrame = f; document.querySelectorAll('.framebar button').forEach(b => b.classList.toggle('on', b.dataset.frame === f)); }
+function sizeCanvas(c, h) { dpr = window.devicePixelRatio || 1; const w = c.clientWidth; c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px'; return [w, h]; }
+function resize() { [W, H] = sizeCanvas(cv, Math.max(320, Math.min(560, cv.clientWidth * 0.72))); sizeCanvas($('chart'), 190); sizeWorld(); drawChart(); drawTilt(); }
+function proj(x, y, z) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const h = y * cy - z * sy, d = y * sy + z * cy;
+  const v = x * cp - d * sp, dd = x * sp + d * cp;
+  return [W / 2 + h * scale, H / 2 + 14 - v * scale, dd];
+}
+function arrow(x0, y0, x1, y1, col, label, lw = 1.5) {
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  const a = Math.atan2(y1 - y0, x1 - x0); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - 8 * Math.cos(a - .4), y1 - 8 * Math.sin(a - .4)); ctx.lineTo(x1 - 8 * Math.cos(a + .4), y1 - 8 * Math.sin(a + .4)); ctx.fill();
+  if (label) { ctx.font = `500 11px ${css('--f-mono')}`; ctx.textAlign = x1 >= x0 ? 'left' : 'right'; ctx.fillText(label, x1 + (x1 >= x0 ? 6 : -6), y1 + 4); }
+}
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+let viewMode = 'angled';
+const VIEWS = { angled: [1.0, 0.35], side: [Math.PI / 2, 0] };
+function setView(m) { viewMode = m; if (VIEWS[m]) [yaw, pitch] = VIEWS[m];
+  document.querySelectorAll('.viewbar button').forEach(b => b.classList.toggle('on', b.dataset.view === m)); }
+function draw3d() {
+  const r = results[sel]; if (!r) return;
+  const C = { grid: css('--grid'), line: css('--line'), muted: css('--muted'), laser: css('--laser'), sun: css('--sun'), sat: css('--sat'), bad: css('--bad'), ink: css('--ink'), panel: css('--panel'), bg: css('--bg') };
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const ext = Math.max(r.rmax, P.s) * 1.15; scale = Math.min(W, H - 40) / 2 / ext;
+  const th = phase * Math.PI / 180, beta = P.beta * Math.PI / 180, F = r.F, o = [0, 0, 0];
+  const sunL = [0, 0, 0]; sunDir(beta, th, sunL); const ecl = inEclipse(beta, th);
+  const rot = refFrame === 'inertial' ? th : 0, sun = R2(sunL, rot);
+  if (viewMode === 'sun') { pitch = Math.asin(sun[0]); yaw = Math.atan2(sun[1], sun[2]); }
+  // Orbital plane, filled
+  const step = niceStep(ext / 4), g = Math.ceil(ext / step) * step;
+  const cs = [proj(-g, -g, 0), proj(-g, g, 0), proj(g, g, 0), proj(g, -g, 0)];
+  ctx.fillStyle = C.grid; ctx.globalAlpha = 0.55; ctx.beginPath(); cs.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+  ctx.lineWidth = 1; ctx.strokeStyle = C.line; ctx.globalAlpha = 0.5;
+  for (let v = -g; v <= g + 1e-6; v += step) { line(proj(v, -g, 0), proj(v, g, 0)); line(proj(-g, v, 0), proj(g, v, 0)); }
+  ctx.globalAlpha = 1;
+  const lc = cs.reduce((a, b) => (b[0] + b[1] > a[0] + a[1] ? b : a)); halo('Orbital plane', lc[0] - 6, lc[1] - 8, C.muted, C.bg, 'right');
+  // Axes
+  const O = proj(0, 0, 0), ax = ext * 0.95;
+  let p = proj(...R2([0, ax, 0], rot)); arrow(O[0], O[1], p[0], p[1], C.muted, W < 560 ? 'Travel' : 'Direction of travel', 1);
+  p = proj(...R2([-ax, 0, 0], rot)); arrow(O[0], O[1], p[0], p[1], C.muted, 'To Earth', 1);
+  // Sunlight: parallel rays travelling away from the Sun
+  const p1 = norm(cross(sun, [1, 0, 0])), p2 = cross(sun, p1);
+  const sunLen = Math.hypot(proj(sun[0], sun[1], sun[2])[0] - O[0], proj(sun[0], sun[1], sun[2])[1] - O[1]) / scale;
+  $('sunHint').hidden = ecl || sunLen > 0.25;
+  if (!ecl) {
+    ctx.strokeStyle = C.sun; ctx.fillStyle = C.sun; ctx.lineWidth = 1.2;
+    for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
+      const off = [0, 1, 2].map(k => (p1[k] * (i + j * 0.33) + p2[k] * (j - i * 0.33)) * ext * 0.6);
+      const a = proj(...[0, 1, 2].map(k => off[k] + sun[k] * ext * 1.5)), b = proj(...[0, 1, 2].map(k => off[k] - sun[k] * ext * 1.1));
+      const m = proj(...[0, 1, 2].map(k => off[k] + sun[k] * ext * 0.9));
+      ctx.globalAlpha = 0.45; ctx.setLineDash([6, 5]); line(a, b); ctx.setLineDash([]);
+      const an = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 30) { ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.moveTo(m[0], m[1]); ctx.lineTo(m[0] - 8 * Math.cos(an - .45), m[1] - 8 * Math.sin(an - .45)); ctx.lineTo(m[0] - 8 * Math.cos(an + .45), m[1] - 8 * Math.sin(an + .45)); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+    const sp = proj(sun[0] * ext * 1.5, sun[1] * ext * 1.5, sun[2] * ext * 1.5);
+    if (sunLen > 0.25) { ctx.beginPath(); ctx.arc(sp[0], sp[1], 9, 0, 2 * Math.PI); ctx.fill(); halo('Sun', sp[0] + 14, sp[1] + 4, C.sun, C.bg, 'left'); }
+  }
+  // Relative orbits
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+  if (FORMS[sel].id !== 'train') for (const pts of paths) { ctx.beginPath(); pts.forEach((q, i) => { const s = proj(...R2(q, rot ? q[3] : 0)); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.stroke(); }
+  // Current positions
+  const pos = new Float64Array(3 * P.N);
+  for (let k = 0; k < P.N; k++) { F.pos(k, th, o); pos[3*k] = o[0]; pos[3*k+1] = o[1]; pos[3*k+2] = o[2]; }
+  const sh = new Float64Array(P.N); if (!ecl) shadingAt(pos, P.N, sunL, P.span / 2, sh);
+  if (rot) for (let k = 0; k < P.N; k++) { const v = R2([pos[3*k], pos[3*k+1], pos[3*k+2]], rot); pos[3*k] = v[0]; pos[3*k+1] = v[1]; pos[3*k+2] = v[2]; }
+  // Follow S1's whole loop, as in Google's figure
+  if (P.N > 1) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ctx.setLineDash([5, 4]); ctx.beginPath();
+    paths[s1].forEach((q, i) => { const s = proj(...R2(q, rot ? q[3] : 0)); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.stroke(); ctx.setLineDash([]); }
+  const plan = linkPlan(r);
+  ctx.strokeStyle = C.laser; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.75;
+  for (const [i, j] of plan) line(proj(pos[3*i], pos[3*i+1], pos[3*i+2]), proj(pos[3*j], pos[3*j+1], pos[3*j+2]));
+  ctx.globalAlpha = 1;
+  // Solar panels: squares facing the Sun, drawn back to front
+  const hs = Math.max(P.span / 2, 4 / scale);
+  const idx = [...Array(P.N).keys()].map(k => ({ k, d: proj(pos[3*k], pos[3*k+1], pos[3*k+2])[2] })).sort((a, b) => a.d - b.d);
+  let nShaded = 0;
+  for (const { k } of idx) {
+    const shaded = sh[k] > 0.01; if (shaded) nShaded++;
+    const c = [pos[3*k], pos[3*k+1], pos[3*k+2]];
+    const q = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => proj(...[0, 1, 2].map(i => c[i] + (p1[i] * a + p2[i] * b) * hs)));
+    ctx.beginPath(); q.forEach((v, i) => i ? ctx.lineTo(v[0], v[1]) : ctx.moveTo(v[0], v[1])); ctx.closePath();
+    ctx.fillStyle = ecl ? C.muted : shaded ? C.bad : C.sat; ctx.globalAlpha = ecl ? 0.5 : 0.92; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = C.panel; ctx.lineWidth = 1; ctx.stroke();
+    const cc = proj(...c); ctx.lineWidth = 2; ctx.strokeStyle = shaded ? C.bad : C.sat; // keep edge-on panels visible
+    if (Math.abs((q[0][0] - q[2][0]) * (q[1][1] - q[3][1]) - (q[0][1] - q[2][1]) * (q[1][0] - q[3][0])) < 20) { ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); ctx.lineTo(q[2][0], q[2][1]); ctx.stroke(); }
+  }
+  for (const [k, t] of [[s0, 'S0'], [s1, 'S1']]) { if (P.N < 2) break; const q = proj(pos[3*k], pos[3*k+1], pos[3*k+2]);
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(7, hs * scale * 1.3), 0, 2 * Math.PI); ctx.stroke();
+    halo(t, q[0] + Math.max(9, hs * scale * 1.3) + 2, q[1] - 6, C.ink, C.bg, 'left', ctx, 12); }
+  // Scale bar
+  const sb = niceStep(ext / 3), px = sb * scale; ctx.strokeStyle = C.ink; ctx.fillStyle = C.ink; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(14, H - 16); ctx.lineTo(14 + px, H - 16); ctx.moveTo(14, H - 20); ctx.lineTo(14, H - 12); ctx.moveTo(14 + px, H - 20); ctx.lineTo(14 + px, H - 12); ctx.stroke();
+  ctx.font = `500 11px ${css('--f-mono')}`; ctx.textAlign = 'left'; ctx.fillText(fmtM(sb), 20 + px, H - 12);
+  let nn = [Infinity, 0];
+  for (let i = 0; i < P.N; i++) { let b = Infinity; for (let j = 0; j < P.N; j++) if (i !== j) b = Math.min(b, Math.hypot(pos[3*i]-pos[3*j], pos[3*i+1]-pos[3*j+1], pos[3*i+2]-pos[3*j+2])); nn[0] = Math.min(nn[0], b); nn[1] = Math.max(nn[1], b); }
+  $('rTime').textContent = (th / n / 60).toFixed(1) + ' / ' + (T / 60).toFixed(1) + ' min';
+  $('rLight').textContent = ecl ? "In Earth's shadow" : 'Sunlit';
+  $('rNN').textContent = (Math.round(nn[0]) === Math.round(nn[1]) ? fmtM(nn[0]) : fmtM(nn[0]) + '–' + fmtM(nn[1]));
+  $('rShade').textContent = ecl ? '–' : nShaded + ' of ' + P.N;
+}
+function halo(txt, x, y, fg, bg, align = 'center', c = ctx, size = 11) {
+  c.font = `500 ${size}px ${css('--f-mono')}`; c.textAlign = align; c.lineJoin = 'round';
+  c.strokeStyle = bg; c.lineWidth = 4; c.strokeText(txt, x, y); c.fillStyle = fg; c.fillText(txt, x, y);
+}
+function line(a, b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+function niceStep(x) { const e = 10 ** Math.floor(Math.log10(x)), f = x / e; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * e; }
+// Rebuild the fixed link plan for drawing (same rule as evaluate()).
+let planCache = null;
+function linkPlan(r) {
+  if (planCache && planCache.r === r) return planCache.plan;
+  const F = r.F, o = [0, 0, 0], N = P.N, dmax = [];
+  const pos = []; for (let m = 0; m < M; m++) { const a = []; for (let k = 0; k < N; k++) { F.pos(k, 2 * Math.PI * m / M, o); a.push([...o]); } pos.push(a); }
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) { let d = 0; for (const a of pos) d = Math.max(d, Math.hypot(a[i][0]-a[j][0], a[i][1]-a[j][1], a[i][2]-a[j][2])); if (d <= P.L) dmax.push([d, i, j]); }
+  dmax.sort((a, b) => a[0] - b[0]); const deg = new Int32Array(N), plan = [];
+  for (const [, i, j] of dmax) if (deg[i] < P.term && deg[j] < P.term) { deg[i]++; deg[j]++; plan.push([i, j]); }
+  planCache = { r, plan }; return plan;
+}
+
+// ---------- Big picture ----------
+const wc = $('world'), wctx = wc.getContext('2d');
+const cam = { az: 0.95, el: 0.45 }; let earthLayer = null, earthDirty = true, WW = 0, WH = 0;
+function camBasis() { const { az, el } = cam, ca = Math.cos(az), sa = Math.sin(az), ce = Math.cos(el), se = Math.sin(el);
+  return { r: [-sa, ca, 0], u: [-se * ca, -se * sa, ce], f: [ce * ca, ce * sa, se] }; }
+// World frame: Sun along +X. The orbit normal leans toward the Sun so that sun·normal = sin β.
+function orbitBasis() { const b = P.beta * Math.PI / 180; return { nrm: [Math.sin(b), 0, Math.cos(b)], e1: [Math.cos(b), 0, -Math.sin(b)], e2: [0, 1, 0] }; }
+function sizeWorld() { WW = wc.clientWidth; WH = Math.round(Math.max(300, Math.min(470, WW * 0.68)));
+  const d = window.devicePixelRatio || 1; wc.width = Math.round(WW * d); wc.height = Math.round(WH * d); wc.style.height = WH + 'px'; earthDirty = true; }
+function wgeom() { return { R: Math.min(WW, WH) * 0.27, cx: WW * 0.56, cy: WH * 0.54 }; }
+function hex(c) { const m = c.match(/^#?([0-9a-f]{6})$/i); const v = m ? parseInt(m[1], 16) : 0x888888; return [v >> 16 & 255, v >> 8 & 255, v & 255]; }
+function renderEarth() {
+  const d = window.devicePixelRatio || 1, { R } = wgeom(), S = Math.ceil(2 * R * d), B = camBasis();
+  earthLayer = earthLayer || document.createElement('canvas'); earthLayer.width = earthLayer.height = S;
+  const g = earthLayer.getContext('2d'), img = g.createImageData(S, S), day = hex(css('--earth')), night = hex(css('--night')), h = S / 2;
+  for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+    const a = (px + 0.5 - h) / h, b = -(py + 0.5 - h) / h, rr = a * a + b * b; if (rr > 1) continue;
+    const c = Math.sqrt(1 - rr), wx = a * B.r[0] + b * B.u[0] + c * B.f[0];
+    const t = Math.max(0, Math.min(1, wx * 6 + 0.5)), k = (py * S + px) * 4, lum = 0.78 + 0.22 * c;
+    for (let ch = 0; ch < 3; ch++) img.data[k + ch] = (night[ch] + (day[ch] - night[ch]) * t) * lum;
+    img.data[k + 3] = rr > 0.985 ? 255 * (1 - rr) / 0.015 : 255;
+  }
+  g.putImageData(img, 0, 0); earthDirty = false;
+}
+function drawWorld() {
+  if (!WW || !results[sel]) return; if (earthDirty) renderEarth();
+  const d = window.devicePixelRatio || 1, B = camBasis(), Ob = orbitBasis(), { R, cx, cy } = wgeom(), ro = A / RE;
+  const C = { sun: css('--sun'), laser: css('--laser'), sat: css('--sat'), muted: css('--muted'), ink: css('--ink'), bg: css('--panel'), line: css('--line'), bad: css('--bad') };
+  const c = wctx; c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, WW, WH);
+  const pr = p => [cx + R * dot(p, B.r), cy - R * dot(p, B.u), dot(p, B.f)];
+  const hidden = q => q[2] < 0 && Math.hypot(q[0] - cx, q[1] - cy) < R;
+  // Sunlight: parallel rays from the Sun's side of the screen
+  let ux = B.r[0], uy = -B.u[0]; const sl = Math.hypot(ux, uy) || 1; ux /= sl; uy /= sl; const vx = -uy, vy = ux;
+  const far = Math.hypot(WW, WH);
+  c.strokeStyle = C.sun; c.fillStyle = C.sun; c.lineWidth = 1.2;
+  for (let i = -6; i <= 6; i++) { const o = i * R * 0.28, bx = cx + vx * o, by = cy + vy * o;
+    const stop = Math.abs(o) < R ? Math.sqrt(R * R - o * o) * 0.2 : -far; // rays that hit the Earth end on its day side
+    c.globalAlpha = 0.4; c.setLineDash([7, 6]); c.beginPath(); c.moveTo(bx + ux * far, by + uy * far); c.lineTo(bx + ux * stop, by + uy * stop); c.stroke(); c.setLineDash([]);
+    const mx = bx + ux * R * 1.9, my = by + uy * R * 1.9; c.globalAlpha = 0.75; c.beginPath(); c.moveTo(mx - ux * 9, my - uy * 9);
+    c.lineTo(mx + vx * 4, my + vy * 4); c.lineTo(mx - vx * 4, my - vy * 4); c.closePath(); c.fill(); }
+  c.globalAlpha = 1;
+  // Sun glyph where the sunward direction leaves the canvas
+  let tEdge = Infinity; for (const [dd, lim] of [[ux, ux > 0 ? WW - 30 - cx : 30 - cx], [uy, uy > 0 ? WH - 30 - cy : 40 - cy]]) if (Math.abs(dd) > 1e-6) tEdge = Math.min(tEdge, lim / dd);
+  const sx = cx + ux * tEdge, sy = cy + uy * tEdge;
+  c.beginPath(); c.arc(sx, sy, 13, 0, 2 * Math.PI); c.fill();
+  halo('Sun', sx, sy + (uy > 0 ? -20 : 30), C.sun, C.bg, 'center', c, 12);
+  // Orbit ring: far half, Earth, near half
+  const th = phase * Math.PI / 180, beta = P.beta * Math.PI / 180;
+  const opt = u => [0, 1, 2].map(i => ro * (Ob.e1[i] * Math.cos(u) + Ob.e2[i] * Math.sin(u)));
+  const ring = []; for (let i = 0; i <= 180; i++) ring.push(pr(opt(i / 180 * 2 * Math.PI)));
+  const drawRing = front => { c.strokeStyle = C.laser; c.lineWidth = 2; c.globalAlpha = front ? 0.95 : 0.35;
+    for (let i = 0; i < 180; i++) { const a = ring[i], b = ring[i + 1]; if ((a[2] >= 0) !== front) continue; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); } c.globalAlpha = 1; };
+  // Cluster, enlarged
+  const r = results[sel], F = r.F, k = 0.3 / r.rmax, o = [0, 0, 0];
+  const cen = opt(th), rh = norm(cen), tv = [0, 1, 2].map(i => -Ob.e1[i] * Math.sin(th) + Ob.e2[i] * Math.cos(th));
+  const toW = (x, y, z) => [0, 1, 2].map(i => cen[i] + k * (x * rh[i] + y * tv[i] + z * Ob.nrm[i]));
+  const cenS = pr(cen), behind = hidden(cenS), ecl = inEclipse(beta, th);
+  const drawCluster = () => {
+    c.globalAlpha = behind ? 0.3 : 1;
+    c.strokeStyle = C.line; c.lineWidth = 1;
+    if (FORMS[sel].id !== 'train') for (const pts of paths) { c.beginPath(); pts.forEach((q, i) => { const s = pr(toW(...q)); i ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]); }); c.stroke(); }
+    c.fillStyle = ecl ? C.muted : C.sat;
+    for (let j = 0; j < P.N; j++) { F.pos(j, th, o); const s = pr(toW(o[0], o[1], o[2])); c.beginPath(); c.arc(s[0], s[1], 2.6, 0, 2 * Math.PI); c.fill(); }
+    const tip = pr(toW(0, r.rmax * 1.5, 0)); c.globalAlpha = behind ? 0.3 : 0.9;
+    arrowOn(c, cenS[0], cenS[1], tip[0], tip[1], C.ink);
+    c.globalAlpha = 1;
+  };
+  drawRing(false); if (behind) drawCluster();
+  c.drawImage(earthLayer, cx - R, cy - R, 2 * R, 2 * R);
+  // Day-night line on the near side of the globe
+  c.strokeStyle = C.ink; c.lineWidth = 1.2; c.setLineDash([3, 4]); c.globalAlpha = 0.7; c.beginPath(); let pen = false;
+  for (let i = 0; i <= 120; i++) { const t = i / 120 * 2 * Math.PI, q = pr([0, Math.cos(t), Math.sin(t)]);
+    if (q[2] >= 0) { pen ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); pen = true; } else pen = false; }
+  c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  drawRing(true); if (!behind) drawCluster();
+  // Labels
+  halo('Day side', cx + ux * R * 0.5, cy + uy * R * 0.5 + 4, C.ink, C.bg, 'center', c, 11);
+  halo('Night side', cx - ux * R * 0.55, cy - uy * R * 0.55 + 4, C.ink, C.bg, 'center', c, 11);
+  let top = ring[0]; for (const q of ring) if (q[2] >= 0 && q[1] < top[1]) top = q;
+  halo('Orbit over the day–night line', top[0], top[1] - 10, C.laser, C.bg, 'center', c, 12);
+  const mag = k * RE; const magTxt = '×' + Number(mag.toPrecision(2)).toLocaleString();
+  document.querySelectorAll('#step3 .mag').forEach(e => e.textContent = magTxt);
+  const lx = cenS[0] + (cenS[0] > cx ? 1 : -1) * R * 0.42, ly = cenS[1] + (cenS[1] > cy ? 1 : -1) * R * 0.36;
+  c.strokeStyle = C.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(cenS[0], cenS[1]); c.lineTo(lx, ly); c.stroke();
+  halo(FORMS[sel].name + ' (' + magTxt + ')', lx, ly + (ly > cenS[1] ? 14 : -6), C.ink, C.bg, cenS[0] > cx ? 'left' : 'right', c, 12);
+  halo('Sun angle β = ' + P.beta + '°' + (ecl ? ' · cluster in Earth\'s shadow' : ''), 12, WH - 12, C.muted, C.bg, 'left', c, 11);
+}
+function arrowOn(c, x0, y0, x1, y1, col) { c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+  const a = Math.atan2(y1 - y0, x1 - x0); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x1 - 7 * Math.cos(a - .45), y1 - 7 * Math.sin(a - .45)); c.lineTo(x1 - 7 * Math.cos(a + .45), y1 - 7 * Math.sin(a + .45)); c.fill(); }
+
+// ---------- Chart ----------
+const ch = $('chart'), cx2 = ch.getContext('2d');
+function drawChart() {
+  const r = results[sel]; if (!r || !ch.clientWidth) return;
+  const d = window.devicePixelRatio || 1, w = ch.clientWidth, h = 190; cx2.setTransform(d, 0, 0, d, 0, 0); cx2.clearRect(0, 0, w, h);
+  const L = 54, Rr = 46, top = 10, bot = 26, pw = w - L - Rr, ph = h - top - bot;
+  const C = { muted: css('--muted'), grid: css('--grid'), laser: css('--laser'), bad: css('--bad'), night: css('--night'), ink: css('--ink') };
+  const ymax = Math.max(P.L, ...r.series.map(s => s.hi || 0)) * 1.1;
+  const X = m => L + pw * m / M, Y = v => top + ph * (1 - v / ymax);
+  // Eclipse bands
+  cx2.fillStyle = C.night; cx2.globalAlpha = 0.35;
+  r.series.forEach((s, m) => { if (s.ecl) cx2.fillRect(X(m), top, pw / M + 0.5, ph); }); cx2.globalAlpha = 1;
+  // Grid + y labels
+  cx2.font = `11px ${css('--f-mono')}`; cx2.fillStyle = C.muted; cx2.strokeStyle = C.grid; cx2.lineWidth = 1; cx2.textAlign = 'right';
+  const st = niceStep(ymax / 4); for (let v = 0; v <= ymax; v += st) { cx2.beginPath(); cx2.moveTo(L, Y(v)); cx2.lineTo(L + pw, Y(v)); cx2.stroke(); cx2.fillText(fmtM(v), L - 6, Y(v) + 4); }
+  cx2.textAlign = 'center'; for (let q = 0; q <= 4; q++) cx2.fillText(Math.round(T / 60 * q / 4) + ' min', L + pw * q / 4, h - 8);
+  // Link band
+  cx2.fillStyle = C.laser; cx2.globalAlpha = 0.28; cx2.beginPath();
+  r.series.forEach((s, m) => { const y = Y(isNaN(s.hi) ? 0 : s.hi); m ? cx2.lineTo(X(m), y) : cx2.moveTo(X(m), y); });
+  for (let m = M - 1; m >= 0; m--) cx2.lineTo(X(m), Y(isNaN(r.series[m].lo) ? 0 : r.series[m].lo)); cx2.closePath(); cx2.fill(); cx2.globalAlpha = 1;
+  cx2.strokeStyle = C.laser; cx2.lineWidth = 1.5; for (const key of ['lo', 'hi']) { cx2.beginPath(); r.series.forEach((s, m) => { const y = Y(isNaN(s[key]) ? 0 : s[key]); m ? cx2.lineTo(X(m), y) : cx2.moveTo(X(m), y); }); cx2.stroke(); }
+  // Range limit
+  cx2.setLineDash([4, 4]); cx2.strokeStyle = C.muted; cx2.beginPath(); cx2.moveTo(L, Y(P.L)); cx2.lineTo(L + pw, Y(P.L)); cx2.stroke(); cx2.setLineDash([]);
+  // Shading on right axis 0..max(5%, peak)
+  const smax = Math.max(0.05, ...r.series.map(s => s.shade)) * 1.1, YS = v => top + ph * (1 - v / smax);
+  cx2.strokeStyle = C.bad; cx2.lineWidth = 2; cx2.beginPath(); r.series.forEach((s, m) => { const y = YS(s.shade); m ? cx2.lineTo(X(m), y) : cx2.moveTo(X(m), y); }); cx2.stroke();
+  cx2.fillStyle = C.bad; cx2.textAlign = 'left'; cx2.fillText(fmtPct(0), L + pw + 6, YS(0) + 4); cx2.fillText(fmtPct(smax / 1.1), L + pw + 6, YS(smax / 1.1) + 4);
+  ch.dataset.cursor = '';
+}
+function drawCursor() {
+  // Lightweight: redraw chart then a phase cursor.
+  drawChart(); const w = ch.clientWidth, L = 54, pw = w - L - 46; const x = L + pw * phase / 360;
+  cx2.strokeStyle = css('--sun'); cx2.lineWidth = 1.5; cx2.beginPath(); cx2.moveTo(x, 10); cx2.lineTo(x, 164); cx2.stroke();
+}
+
+// ---------- Loop ----------
+let last = performance.now(), frame = 0;
+function tick(now) {
+  const dt = (now - last) / 1000; last = now;
+  if (playing) { phase = (phase + dt * 360 / 24) % 360; $('phase').value = Math.round(phase); }
+  draw3d(); drawWorld(); if (frame++ % 3 === 0) drawCursor();
+  requestAnimationFrame(tick);
+}
+
+// ---------- Wiring ----------
+let rt = 0;
+for (const id of ['n', 's', 'span', 'L', 'term', 'beta']) $(id).addEventListener('input', () => { planCache = null; clearTimeout(rt); rt = setTimeout(recompute, 60); });
+document.querySelectorAll('.obj').forEach(b => b.addEventListener('click', () => { objective = b.dataset.obj; best = winners[objective]; renderTable(); renderVerdict(); renderObjectives(); selectForm(best, true); }));
+$('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
+$('phase').addEventListener('input', e => { phase = +e.target.value; });
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY, yaw, pitch]; setView('free'); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.008; pitch = Math.max(-1.5, Math.min(1.5, drag[3] + (e.clientY - drag[1]) * 0.008)); });
+cv.addEventListener('pointerup', () => { drag = null; });
+document.querySelectorAll('.viewbar button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+document.querySelectorAll('.framebar button').forEach(b => b.addEventListener('click', () => setFrame(b.dataset.frame)));
+let wdrag = null;
+wc.addEventListener('pointerdown', e => { wdrag = [e.clientX, e.clientY, cam.az, cam.el]; wc.setPointerCapture(e.pointerId); });
+wc.addEventListener('pointermove', e => { if (!wdrag) return; cam.az = wdrag[2] - (e.clientX - wdrag[0]) * 0.008; cam.el = Math.max(-1.3, Math.min(1.3, wdrag[3] + (e.clientY - wdrag[1]) * 0.008)); earthDirty = true; });
+wc.addEventListener('pointerup', () => { wdrag = null; });
+new ResizeObserver(() => resize()).observe(document.querySelector('.wrap'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { earthDirty = true; });
+new MutationObserver(() => { earthDirty = true; }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+$('rPeriod').textContent = (T / 60).toFixed(1) + ' min';
+$('rInc').textContent = (INC * 180 / Math.PI).toFixed(2) + '°';
+$('play').textContent = playing ? 'Pause' : 'Play';
+recompute(); resize(); requestAnimationFrame(tick);
+window.__cluster = { FORMS, evaluate, recompute, P, get results() { return results; }, get grades() { return grades; } };
+})();
+</script>
+</body>
+</html>

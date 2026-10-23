@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Inside SpaceX AI1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: one wide drawing card with two zoom levels (whole satellite, compute module), then a systems index and a part sheet. */
+:root {
+  --bg: #e6e9ec;
+  --card: #f6f7f8;
+  --ink: #18202a;
+  --muted: #5b6573;
+  --line: #c8ced5;
+  --accent: #b37a12;
+  --accent-soft: #b37a1222;
+  --heat: #d0612a;
+  --cold: #2f7fc8;
+  --power: #c9961c;
+  --data: #7b4fd0;
+  --display: "Saira Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --card: #161d25; --ink: #e5eaf0; --muted: #8b97a6; --line: #28323e;
+    --accent: #e3b04d; --accent-soft: #e3b04d26; --heat: #f08048; --cold: #5aa6ee; --power: #f0c040; --data: #a685f5; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --card: #161d25; --ink: #e5eaf0; --muted: #8b97a6; --line: #28323e;
+  --accent: #e3b04d; --accent-soft: #e3b04d26; --heat: #f08048; --cold: #5aa6ee; --power: #f0c040; --data: #a685f5; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  margin: 0; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: grid; gap: 8px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 5vw, 46px); letter-spacing: .01em; line-height: 1; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 72ch; margin: 0; }
+
+.card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; touch-action: none; cursor: grab; }
+.stage.dragging { cursor: grabbing; }
+.stage svg.fig { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: opacity .25s; }
+.stage svg.fig.swap { opacity: 0; }
+.stage svg.fig path { stroke-width: .6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.stage svg.fig path.hl { stroke: var(--accent); stroke-width: 1.4; }
+.stage svg.fig path.flow { fill: none; stroke-linecap: round; vector-effect: none; pointer-events: none; }
+.flow.hot { stroke: var(--heat); } .flow.cold { stroke: var(--cold); } .flow.power { stroke: var(--power); } .flow.data { stroke: var(--data); }
+.corner { position: absolute; font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; color: var(--muted); pointer-events: none; }
+.corner.tl { top: 14px; left: 16px; color: var(--ink); text-transform: uppercase; }
+.corner.tr { top: 12px; right: 16px; font-family: var(--display); font-size: 17px; letter-spacing: .04em; color: var(--ink); font-weight: 600; text-align: right; }
+.corner.tr small { display: block; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--muted); letter-spacing: .02em; }
+.corner.bl { bottom: 14px; left: 16px; max-width: 46%; letter-spacing: .02em; }
+.corner.br { bottom: 12px; right: 16px; color: var(--ink); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.readout { display: grid; grid-template-columns: auto auto; gap: 0 12px; font-size: 12px; margin: 0; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; text-align: right; }
+.legend { position: absolute; left: 16px; top: 40px; display: grid; gap: 3px; font-family: var(--mono); font-size: 11px; color: var(--muted); pointer-events: none; }
+.legend span { display: flex; align-items: center; gap: 7px; }
+.legend i { width: 16px; height: 0; border-top: 2.5px dashed currentColor; }
+.legend .hot i { color: var(--heat); } .legend .cold i { color: var(--cold); } .legend .power i { color: var(--power); } .legend .data i { color: var(--data); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button + button { border-left: 1px solid var(--line); }
+button { font: 500 13px var(--body); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.seg button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--accent); }
+button:focus-visible, input:focus-visible, .stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slider { display: flex; align-items: center; gap: 10px; flex: 1 1 220px; min-width: 0; }
+.slider label { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.slider input { flex: 1; min-width: 0; accent-color: var(--accent); }
+
+.lower { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+.systems { display: grid; gap: 2px; }
+.sys { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 12px; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 4px; padding: 9px 12px; }
+.sys .sw { width: 14px; height: 14px; border-radius: 2px; border: 1px solid #0003; }
+.sys .nm { font-family: var(--display); font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+.sys .ct { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.sys[aria-pressed="true"] { background: var(--card); border-color: var(--line); }
+.sheet { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 20px 22px; }
+.eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 4px; }
+.sheet h2 { font-family: var(--display); font-size: 28px; font-weight: 600; line-height: 1.1; margin: 0 0 10px; text-wrap: balance; }
+.sheet p { margin: 0 0 12px; max-width: 64ch; }
+.sheet .src { font-size: 12.5px; color: var(--muted); }
+.stat { font-family: var(--mono); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.parts { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
+.parts button { font-size: 12.5px; padding: 4px 10px; }
+.chain { display: grid; gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
+.chain li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; align-items: baseline; }
+.chain li::before { content: ""; width: 12px; height: 0; border-top: 2.5px dashed var(--c); transform: translateY(-3px); }
+.chain b { font-weight: 600; }
+.notes { color: var(--muted); font-size: 13px; max-width: 86ch; margin: 0; display: grid; gap: 6px; }
+.notes a { color: inherit; }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+
+@media (max-width: 760px) {
+  .stage { aspect-ratio: 4 / 5; }
+  .stage svg.fig { top: 40px; bottom: 92px; height: auto; }
+  .lower { grid-template-columns: minmax(0, 1fr); }
+  .corner.bl { display: none; }
+  .corner.tr { font-size: 15px; }
+  .legend { top: auto; bottom: 12px; left: 12px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Anatomy of SpaceX's AI1 orbital data center</h1>
+    <p class="lede">A rack of 72 AI chips flying 600 km up, powered by 70 metres of solar wings and cooled by a radiator that sheds heat straight into space. Turn it, open the compute module, and follow the power, heat and data through it.</p>
+  </header>
+
+  <section class="card" aria-label="Interactive drawing of the AI1 satellite">
+    <div class="stage" id="stage" tabindex="0" aria-label="Satellite drawing. Arrow keys turn the view, I opens the compute module, T pulls out a tray.">
+      <svg class="fig" id="fig" viewBox="-400 -250 800 450" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Isometric drawing of the AI1 satellite"></svg>
+      <div class="corner tl" id="figNo">Fig 1</div>
+      <div class="corner tr" id="figTitle">Whole satellite<small>70 m wingspan · 20 m tall</small></div>
+      <div class="legend" id="legend"></div>
+      <div class="corner bl" id="hint">Drag to turn · tap a part · <kbd>I</kbd> look inside</div>
+      <dl class="corner br readout" id="readout"></dl>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Zoom level">
+        <button id="vWhole" aria-pressed="true">Whole satellite</button>
+        <button id="vCore" aria-pressed="false">Compute module</button>
+      </div>
+      <div class="seg" role="group" aria-label="Flow to show">
+        <button data-flow="heat" aria-pressed="true">Heat</button>
+        <button data-flow="power" aria-pressed="false">Power</button>
+        <button data-flow="data" aria-pressed="false">Data</button>
+      </div>
+      <div class="slider">
+        <label for="load" id="loadLabel">GPU load 80%</label>
+        <input id="load" type="range" min="0" max="100" value="80" aria-label="GPU workload">
+      </div>
+      <button id="tray" aria-pressed="false">Pull out a tray</button>
+    </div>
+  </section>
+
+  <section class="lower">
+    <div class="systems" id="systems" role="group" aria-label="Systems"></div>
+    <article class="sheet" id="sheet" aria-live="polite"></article>
+  </section>
+
+  <div class="notes">
+    <p>What is public and what is drawn in: SpaceX has given AI1's outline (about 70 m wingspan, 20 m deployed height, 150 kW peak and 120 kW sustained compute, a 110 m² deployable liquid radiator with redundant pumping loops held knife-edge to the Sun, laser links instead of antennas, Starlink V3 heritage) and named NVIDIA Rubin GPUs and Vera CPUs as the first compute payload. It has not published the inside of the compute module. That interior follows NVIDIA's NVL72 rack (18 compute trays of 4 GPUs and 2 CPUs, 9 NVLink switch trays); the pumps, power shelf, battery and thrusters are typical choices, drawn as an informed illustration rather than SpaceX's own layout. AI1 is a draft design, with two prototypes planned for 2027.</p>
+    <p>Numbers on the page come from one model: 250 W/m² of solar array, about 1,400 W per m² of radiator panel (both faces radiating, emissivity 0.9), and every watt of compute ending up as heat. Sources: <a href="https://www.datacenterdynamics.com/en/news/spacex-details-ai1-satellite-data-center-claims-150kw-peak-compute/">DCD</a>, <a href="https://www.techtimes.com/articles/318103/20260610/spacex-ai1-orbital-data-center-bets-space-power-cooling-economics-stay-unproven.htm">Tech Times</a>, <a href="https://engadget.com/2243934/spacex-use-nvidia-gpu-for-starmind-project">Engadget</a>, <a href="https://app.dealroom.co/news/note/musk-s-space-ai-data-centres-spacex-unveils-the-ai-1-satellite-and-a-path-to-terawatt-scale-orbital-compute">Dealroom</a>.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const D2R = Math.PI / 180;
+
+/* ---------- the model ---------- */
+const M = (() => {
+  const solarWm2 = 250, wingSpan = 32.5, wingH = 13, wings = 2;
+  const arrayArea = wings * wingSpan * wingH;                    // m²
+  const solar = arrayArea * solarWm2 / 1000;                     // kW
+  const peak = 150, idle = 0.15, house = 5;                      // kW
+  const radArea = 110, eps = 0.9, sigma = 5.670e-8;              // m² of panel, both faces radiate
+  const gpus = 72, cpus = 36, trays = 18, switches = 9;
+  function state(load) {
+    const compute = peak * (idle + (1 - idle) * load);           // kW drawn by the rack
+    const perFace = compute * 1000 / (2 * radArea);              // W/m² leaving each face
+    const radT = Math.pow(perFace / (eps * sigma), 0.25) - 273.15;
+    return { load, compute, radT, perGpu: compute / gpus, margin: solar - compute - house, rejectPerM2: compute * 1000 / radArea };
+  }
+  return { solar, arrayArea, peak, house, radArea, gpus, cpus, trays, switches, state };
+})();
+
+/* ---------- materials ---------- */
+const MAT = {
+  cell: [26, 36, 66], wingB: [196, 200, 206], boom: [120, 126, 136], shell: [176, 181, 188], shellD: [92, 98, 108],
+  rad: [228, 232, 236], radE: [150, 156, 164], laser: [40, 44, 52], lens: [80, 140, 196], hall: [134, 132, 130],
+  black: [30, 32, 38], tray: [72, 80, 94], trayF: [56, 62, 74], sw: [46, 70, 96], spine: [168, 106, 58],
+  gpu: [190, 122, 64], cpu: [158, 160, 168], cold: [64, 128, 196], hot: [210, 104, 52], pump: [96, 106, 118],
+  power: [84, 96, 86], copper: [204, 140, 72], batt: [70, 84, 92], box: [90, 98, 111], floor: [150, 156, 161], metal: [150, 152, 158],
+  qd: [190, 192, 198], track: [112, 120, 131],
+};
+const SHINY = { cell: .9, rad: .5, lens: 1, gpu: .5, copper: .6, qd: .5 };
+
+/* ---------- systems and parts ---------- */
+const SYSTEMS = [
+  { id: "compute", name: "Compute", swatch: "gpu", lede: "The payload: one NVL72-class rack of 72 Rubin GPUs and 36 Vera CPUs, wired together so they behave like one giant accelerator." },
+  { id: "therm", name: "Cooling", swatch: "rad", lede: "There is no air in orbit, so every watt the chips burn has to be carried away by liquid and radiated into space as infrared." },
+  { id: "power", name: "Power", swatch: "cell", lede: "Solar wings derived from Starlink V3 feed the rack directly. In a dawn-to-dusk orbit they are in sunlight about 98% of the time." },
+  { id: "comms", name: "Laser links", swatch: "lens", lede: "AI1 has no dishes or phased arrays. Work comes in and results go out as light, through the Starlink laser mesh." },
+  { id: "bus", name: "Bus", swatch: "shell", lede: "The structure, pointing and propulsion that keep the wings on the Sun, the radiator edge-on to it, and the satellite in its orbit." },
+];
+const flowKey = { heat: ["cold", "hot"], power: ["power"], data: ["data"] };
+const PARTS = {
+  module: { sys: "compute", view: "whole", name: "Compute module", text: "The box at the centre holds the rack. Open it to see the 27 trays, the coolant manifolds and the power shelf.", stat: s => `${s.compute.toFixed(0)} kW drawn now · ${M.peak} kW peak`, go: "core" },
+  trays: { sys: "compute", view: "core", name: "Compute trays", text: "Eighteen trays, each with four Rubin GPUs and two Vera CPUs under copper cold plates. The GPUs do the matrix maths of training and inference; the CPUs feed them data and run everything else.", stat: s => `18 trays · 72 GPUs · 36 CPUs · ${s.perGpu.toFixed(2)} kW per GPU slot now` },
+  switches: { sys: "compute", view: "core", name: "NVLink switch trays", text: "Nine switch trays sit in the middle of the stack. Every GPU connects to every switch, so any GPU can read another's memory as if it were its own. That is what lets 72 chips act as one.", stat: () => "9 switch trays · NVLink 6" },
+  spine: { sys: "compute", view: "core", name: "NVLink spine", text: "Bundles of copper cable along the back of the stack join each tray to the switches. Copper rather than optics keeps the links short, cheap and low-power.", stat: () => "One cable cartridge per tray" },
+  radiator: { sys: "therm", view: "whole", name: "Radiator", text: "A deployable liquid radiator, 20 m tall when unfolded, held knife-edge to the Sun so sunlight barely touches it while both faces glow infrared into cold space. Coolant runs up one half hot and comes back down cold.", stat: s => `${M.radArea} m² · ${s.rejectPerM2.toFixed(0)} W/m² now · ≈ ${s.radT.toFixed(0)} °C` },
+  coldplates: { sys: "therm", view: "core", name: "Cold plates", text: "Copper blocks clamped onto every GPU and CPU. Liquid runs through fine channels inside them and picks up the heat right where it is made.", stat: s => `≈ ${s.perGpu.toFixed(2)} kW into each GPU plate` },
+  manifolds: { sys: "therm", view: "core", name: "Coolant manifolds", text: "Two pipes run the length of the rack. The cold supply line feeds each tray through a quick-disconnect coupling; the warm return line collects it again.", stat: () => "Supply and return · 27 couplings each" },
+  pumps: { sys: "therm", view: "core", name: "Pumps, loops A and B", text: "Two independent pumping loops push coolant between the rack and the radiator. If one fails the other carries the load, because a stopped loop means the chips overheat within seconds.", stat: () => "2 redundant loops" },
+  wings: { sys: "power", view: "whole", name: "Solar wings", text: "Two wings, about 70 m tip to tip, built from Starlink V3 solar technology made at SpaceX's factory in Bastrop, Texas. They face the Sun while the radiator sits edge-on beside them.", stat: () => `${M.arrayArea.toFixed(0)} m² · 250 W/m² · ${M.solar.toFixed(0)} kW` },
+  powershelf: { sys: "power", view: "core", name: "Power shelf", text: "Converters that take the solar wings' high-voltage supply and turn it into the steady DC the trays need, then feed it along a copper bus bar under the stack.", stat: s => `${(s.compute).toFixed(0)} kW out to the rack · ${s.margin.toFixed(0)} kW spare` },
+  battery: { sys: "power", view: "core", name: "Battery", text: "Carries the satellite through the few eclipses a dawn-to-dusk orbit still has. It keeps the flight computer, pumps and pointing alive; the rack can throttle down.", stat: () => "Rides through ≈ 2% of the year in shadow" },
+  lasers: { sys: "comms", view: "whole", name: "Laser terminals", text: "Gimballed optical heads that lock onto Starlink satellites and neighbouring AI1s. Jobs and data arrive this way and results leave the same way, routed to the ground through the Starlink mesh.", stat: () => "4 terminals · terabit-class links" },
+  router: { sys: "comms", view: "core", name: "Flight computer and router", text: "A separate radiation-tolerant computer flies the satellite, and a router hands traffic between the laser terminals and the rack.", stat: () => "Independent of the GPUs" },
+  structure: { sys: "bus", view: "both", name: "Structure and booms", text: "A flat, stiff body sized to stack inside Starship's payload bay, with booms that carry the wings and the folded radiator out from it.", stat: () => "Launched on Starship" },
+  thrusters: { sys: "bus", view: "whole", name: "Hall thrusters", text: "Electric thrusters ionise argon and push it out with a magnetic field, as on Starlink. They raise the orbit, hold it against drag at 600 km, and bring the satellite down at end of life.", stat: () => "Argon · Starlink heritage" },
+  trackers: { sys: "bus", view: "whole", name: "Star trackers", text: "Small cameras that read the star field to tell the satellite which way it points, so it can keep the wings square to the Sun and the radiator edge-on.", stat: () => "2 heads" },
+};
+
+/* ---------- geometry kit ---------- */
+let FACES = [], FLOWS = [];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+function newell(v) {
+  let x = 0, y = 0, z = 0;
+  for (let i = 0; i < v.length; i++) { const a = v[i], b = v[(i + 1) % v.length]; x += (a[1] - b[1]) * (a[2] + b[2]); y += (a[2] - b[2]) * (a[0] + b[0]); z += (a[0] - b[0]) * (a[1] + b[1]); }
+  return [x, y, z];
+}
+function rotM(rx = 0, ry = 0, rz = 0) {
+  const [cx, sx, cy, sy, cz, sz] = [Math.cos(rx * D2R), Math.sin(rx * D2R), Math.cos(ry * D2R), Math.sin(ry * D2R), Math.cos(rz * D2R), Math.sin(rz * D2R)];
+  return [[cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx], [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx], [-sy, cy * sx, cy * cx]];
+}
+const mulV = (m, p) => [m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2], m[1][0] * p[0] + m[1][1] * p[1] + m[1][2] * p[2], m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2]];
+function emit(list, center, o) {
+  const m = o.rot ? rotM(...o.rot) : null, at = o.at || [0, 0, 0];
+  const place = p => { const q = m ? mulV(m, p) : p; return [q[0] + at[0], q[1] + at[1], q[2] + at[2]]; };
+  const c = place(center);
+  for (const f of list) {
+    let v = f.v.map(place);
+    const n = newell(v), cen = v.reduce((s, p) => [s[0] + p[0] / v.length, s[1] + p[1] / v.length, s[2] + p[2] / v.length], [0, 0, 0]);
+    if (dot(n, sub(cen, c)) < 0) v = v.reverse();
+    FACES.push({ v, mat: f.mat, part: o.part, g: o.g || "core" });
+  }
+}
+function grid(a, b, c, d, nu, nv) {
+  const out = [], L = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+  for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+    const P = (u, w) => L(L(a, b, u), L(d, c, u), w);
+    out.push([P(i / nu, j / nv), P((i + 1) / nu, j / nv), P((i + 1) / nu, (j + 1) / nv), P(i / nu, (j + 1) / nv)]);
+  }
+  return out;
+}
+function box(x0, x1, y0, y1, z0, z1, o) {
+  if (x0 > x1) [x0, x1] = [x1, x0]; if (y0 > y1) [y0, y1] = [y1, y0]; if (z0 > z1) [z0, z1] = [z1, z0];
+  const mats = o.mats || {}, cells = o.cells || {}, base = o.mat || "box";
+  const sides = {
+    zp: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], x1 - x0, y1 - y0],
+    zn: [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], x1 - x0, y1 - y0],
+    xp: [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], y1 - y0, z1 - z0],
+    xn: [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], y1 - y0, z1 - z0],
+    yp: [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1], x1 - x0, z1 - z0],
+    yn: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], x1 - x0, z1 - z0],
+  };
+  const list = [];
+  for (const k in sides) {
+    if (o.skip && o.skip.includes(k)) continue;
+    const [a, b, c, d, lu, lv] = sides[k], cs = cells[k] ?? o.cell;
+    const nu = cs ? Math.max(1, Math.round(lu / (Array.isArray(cs) ? cs[0] : cs))) : 1, nv = cs ? Math.max(1, Math.round(lv / (Array.isArray(cs) ? cs[1] : cs))) : 1;
+    for (const q of grid(a, b, c, d, nu, nv)) list.push({ v: q, mat: mats[k] || base });
+  }
+  emit(list, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], o);
+}
+const AX = { z: (u, v, w) => [u, v, w], x: (u, v, w) => [w, u, v], y: (u, v, w) => [v, w, u] };
+function frustum(c, axis, r0, r1, h, o) {
+  const n = o.n || 16, map = AX[axis], list = [], P = (r, a, w) => { const q = map(r * Math.cos(a), r * Math.sin(a), w); return [q[0] + c[0], q[1] + c[1], q[2] + c[2]]; };
+  for (let i = 0; i < n; i++) { const a0 = i / n * 2 * Math.PI, a1 = (i + 1) / n * 2 * Math.PI; list.push({ v: [P(r0, a0, 0), P(r0, a1, 0), P(r1, a1, h), P(r1, a0, h)], mat: o.mat }); }
+  const cap = (r, w, mat) => { const v = []; for (let i = 0; i < n; i++) v.push(P(r, i / n * 2 * Math.PI, w)); list.push({ v, mat }); };
+  if (r0 > 0) cap(r0, 0, o.cap0 || o.cap || o.mat);
+  if (r1 > 0) cap(r1, h, o.cap1 || o.cap || o.mat);
+  const ctr = map(0, 0, h / 2);
+  emit(list, [ctr[0] + c[0], ctr[1] + c[1], ctr[2] + c[2]], o);
+}
+const cyl = (c, axis, r, h, o) => frustum(c, axis, r, r, h, o);
+function sphere(c, r, o) {
+  const nl = o.nl || 6, nm = o.nm || 12, list = [];
+  const P = (i, j) => { const th = i / nl * Math.PI, ph = j / nm * 2 * Math.PI; return [c[0] + r * Math.sin(th) * Math.cos(ph), c[1] + r * Math.sin(th) * Math.sin(ph), c[2] + r * Math.cos(th)]; };
+  for (let i = 0; i < nl; i++) for (let j = 0; j < nm; j++)
+    list.push({ v: i === 0 ? [P(0, 0), P(1, j + 1), P(1, j)] : i === nl - 1 ? [P(i, j), P(i, j + 1), P(nl, 0)] : [P(i, j), P(i, j + 1), P(i + 1, j + 1), P(i + 1, j)], mat: o.mat });
+  emit(list, c, o);
+}
+// a pipe along axis-aligned legs, with a flow line riding on it
+function pipe(pts, r, o) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], e = r;
+    box(Math.min(a[0], b[0]) - e, Math.max(a[0], b[0]) + e, Math.min(a[1], b[1]) - e, Math.max(a[1], b[1]) + e, Math.min(a[2], b[2]) - e, Math.max(a[2], b[2]) + e, o);
+  }
+  if (o.flow) FLOWS.push({ pts, kind: o.flow, g: o.g || "core", lift: r + .4, part: o.part });
+}
+const flow = (pts, kind, o = {}) => FLOWS.push({ pts, kind, g: o.g || "core", lift: o.lift || 0, part: o.part });
+
+/* ---------- view 1: whole satellite (units: dm; x along the wings, y toward the anti-Sun side, z up) ---------- */
+function buildWhole() {
+  // body
+  box(-25, 25, -13, 13, -9, 9, { mat: "shell", mats: { yn: "shellD" }, cells: { zp: 10, zn: 10, yn: 10, yp: 10 }, part: "module" });
+  for (const sx of [-1, 1]) {
+    // boom, drive and wing (cells face the Sun, toward -y)
+    box(sx * 25, sx * 34, -3, 3, -3, 3, { mat: "boom", part: "structure" });
+    cyl([sx * 34, 0, 0], "x", 4.5, sx * 4, { mat: "metal", n: 12, part: "structure" });
+    box(sx * 38, sx * 350, -2.5, -1.5, -1.2, 1.2, { mat: "boom", part: "structure" });
+    for (let k = 0; k < 13; k++) {
+      const x0 = sx * (40 + k * 24.2), x1 = sx * (40 + k * 24.2 + 23.6);
+      box(x0, x1, -1.5, -0.6, -65, 65, { mat: "boom", mats: { yn: "cell", yp: "wingB" }, cells: { yn: [12, 13] }, part: "wings" });
+    }
+    // laser terminals on the top and bottom decks
+    for (const sz of [-1, 1]) {
+      cyl([sx * 16, 0, sz * 9], "z", 3.2, sz * 2.5, { mat: "shellD", n: 12, part: "lasers" });
+      sphere([0, 0, 0], 3, { mat: "laser", nl: 5, nm: 12, at: [sx * 16, 0, sz * 14.5], g: `las_${sx}_${sz}`, part: "lasers" });
+      cyl([0, 0, 0], "x", 1.5, sx * 3, { mat: "lens", cap1: "lens", n: 10, at: [sx * 16 + sx * 1.6, 0, sz * 14.5], g: `las_${sx}_${sz}`, part: "lasers" });
+    }
+  }
+  // radiator: two panels above and below, plane y-z (edge-on to a Sun that lies along y)
+  for (const sz of [-1, 1]) {
+    box(-1.5, 1.5, -6, 6, sz * 9, sz * 16, { mat: "boom", part: "structure" });
+    box(-0.8, 0.8, -31.5, 31.5, sz * 16, sz * 100, { mat: "radE", mats: { xp: "rad", xn: "rad" }, cells: { xp: [10.5, 12], xn: [10.5, 12] }, part: "radiator" });
+    // coolant: hot up the -y half, cold back down the +y half, on both faces
+    for (const fx of [-1, 1]) for (const y of [-24, -12, 12, 24]) {
+      const up = y < 0, z0 = sz * 18, z1 = sz * 98;
+      flow(up ? [[fx * 0.9, y, z0], [fx * 0.9, y, z1]] : [[fx * 0.9, y, z1], [fx * 0.9, y, z0]], up ? "hot" : "cold", { part: "radiator" });
+    }
+  }
+  // thrusters and star trackers on the shaded (+y) face
+  for (const sx of [-1, 1]) {
+    cyl([sx * 18, 13, -4], "y", 3, 2.5, { mat: "hall", cap1: "black", n: 14, part: "thrusters" });
+    cyl([sx * 18, 15.5, -4], "y", 1.2, .4, { mat: "metal", n: 8, part: "thrusters" });
+  }
+  box(-8, -3, 13, 17, 3, 8, { mat: "box", part: "trackers" });
+  frustum([-5.5, 17, 5.5], "y", 1.6, 2.6, 3, { mat: "black", n: 10, part: "trackers" });
+  box(3, 8, 13, 17, 3, 8, { mat: "box", part: "trackers" });
+  frustum([5.5, 17, 5.5], "y", 1.6, 2.6, 3, { mat: "black", n: 10, part: "trackers" });
+  // power runs along the booms from the wings into the body
+  for (const sx of [-1, 1]) flow([[sx * 348, -2.6, 0], [sx * 26, -2.6, 0]], "power", { part: "wings" });
+  // laser beams out to neighbours
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) FLOWS.push({ beam: [sx, sz], kind: "data", g: `las_${sx}_${sz}`, part: "lasers" });
+}
+
+/* ---------- view 2: compute module cutaway (units: cm) ---------- */
+const TRAY0 = -200, PITCH = 12;
+function trayKind(i) { return i >= 10 && i < 19 ? "switch" : "compute"; }
+function buildCore() {
+  // shell: floor, back wall (+y) and end wall (+x); the front, top and -x walls are cut away
+  box(-250, 250, -130, 130, -134, -130, { mat: "floor", cell: 26, part: "structure" });
+  box(-250, 250, 130, 134, -134, 130, { mat: "shell", cells: { yn: 26 }, part: "structure" });
+  box(250, 254, -130, 134, -134, 130, { mat: "shell", cells: { xn: 26 }, part: "structure" });
+  for (const x of [-250, 250]) box(x - 3, x + 3, 124, 130, -130, 130, { mat: "track", part: "structure" });
+  // rack rails
+  for (const y of [-64, 56]) box(-208, 132, y, y + 4, -130, -118, { mat: "track", part: "structure" });
+
+  for (let i = 0; i < 27; i++) {
+    const x = TRAY0 + i * PITCH, kind = trayKind(i), g = i === 0 ? "pull" : "core";
+    const part = kind === "switch" ? "switches" : "trays";
+    box(x - 3, x + 3, -60, 50, -116, -26, { mat: kind === "switch" ? "sw" : "tray", mats: { yn: "trayF" }, cells: { yn: [6, 15] }, g, part });
+    // quick-disconnect couplings on top, tied to the supply (front) and return (back) manifolds
+    cyl([x, -40, -26], "z", 1.6, 7, { mat: "cold", n: 8, g, part: "manifolds" });
+    cyl([x, 30, -26], "z", 1.6, 7, { mat: "hot", n: 8, g, part: "manifolds" });
+    // NVLink cable cartridge behind each tray
+    box(x - 4, x + 4, 50, 56, -112, -30, { mat: "spine", cells: { zp: 8 }, part: "spine" });
+  }
+  // the first compute tray carries its board in full: 4 GPU and 2 CPU cold plates on its -x face, tubing between them
+  const P = { g: "pull" };
+  for (const [y, z] of [[-40, -48], [-14, -48], [-40, -86], [-14, -86]]) {
+    box(TRAY0 - 5.5, TRAY0 - 3, y - 10, y + 10, z - 10, z + 10, { mat: "gpu", ...P, part: "coldplates" });
+    box(TRAY0 - 6.6, TRAY0 - 5.5, y - 6, y + 6, z - 6, z + 6, { mat: "copper", ...P, part: "coldplates" });
+  }
+  for (const z of [-56, -88]) box(TRAY0 - 5, TRAY0 - 3, 14, 30, z - 8, z + 8, { mat: "cpu", ...P, part: "trays" });
+  for (const z of [-48, -86]) box(TRAY0 - 4.6, TRAY0 - 3, -30, -24, z - 1.2, z + 1.2, { mat: "cold", ...P, part: "coldplates" });
+  box(TRAY0 - 4.6, TRAY0 - 3, -28, -26, -86, -48, { mat: "cold", ...P, part: "coldplates" });
+  box(TRAY0 - 4.6, TRAY0 - 3, -45, -35, -36, -34, { mat: "cold", ...P, part: "coldplates" });
+  box(TRAY0 - 4.6, TRAY0 - 3, -41, -39, -36, -26, { mat: "cold", ...P, part: "coldplates" });
+  box(TRAY0 - 4.6, TRAY0 - 3, 29, 31, -96, -26, { mat: "hot", ...P, part: "coldplates" });
+  box(TRAY0 - 4.6, TRAY0 - 3, -4, 30, -97, -95, { mat: "hot", ...P, part: "coldplates" });
+  flow([[TRAY0 - 4.8, -40, -26], [TRAY0 - 4.8, -40, -35], [TRAY0 - 4.8, -27, -35], [TRAY0 - 4.8, -27, -86], [TRAY0 - 4.8, -4, -86], [TRAY0 - 4.8, -4, -96], [TRAY0 - 4.8, 30, -96], [TRAY0 - 4.8, 30, -26]], "cold", { g: "pull", part: "coldplates", hotTail: true });
+
+  // manifolds over the stack and the loop out to the radiator
+  pipe([[-6, -40, 130], [-6, -40, -14], [TRAY0 - 6, -40, -14]], 3.2, { mat: "cold", flow: "cold", part: "manifolds" });
+  pipe([[TRAY0 - 6, 30, -14], [184, 30, -14], [184, 30, -62]], 3.2, { mat: "hot", flow: "hot", part: "manifolds" });
+  pipe([[200, 30, -100], [222, 30, -100], [222, 30, 104], [6, 30, 104], [6, 30, 130]], 3.2, { mat: "hot", flow: "hot", part: "pumps" });
+  for (const y of [30, -30]) {
+    box(166, 202, y - 16, y + 16, -130, -116, { mat: "pump", part: "pumps" });
+    cyl([184, y, -116], "z", 13, 44, { mat: "pump", cap1: "metal", n: 18, part: "pumps" });
+    cyl([184, y, -126], "x", 7, 18, { mat: "metal", n: 12, at: [0, 0, 0], part: "pumps" });
+  }
+  pipe([[184, -30, -72], [184, -30, -40], [184, -44, -40]], 2.4, { mat: "cold", part: "pumps" });
+  cyl([234, -10, -130], "z", 9, 60, { mat: "metal", cap1: "qd", n: 16, part: "pumps" });
+  // radiator feedthrough at the top
+  box(-14, 14, -50, 40, 126, 134, { mat: "boom", part: "radiator" });
+
+  // power: in from the wings, through the shelf, along the bus bar under the trays
+  box(-246, -212, 66, 124, -130, -40, { mat: "power", cells: { xp: [12, 12], yn: [12, 12] }, part: "powershelf" });
+  pipe([[-229, 95, 130], [-229, 95, -40]], 2, { mat: "copper", flow: "power", part: "powershelf" });
+  pipe([[-222, 66, -124], [-222, -66, -124], [132, -66, -124]], 2.2, { mat: "copper", flow: "power", part: "powershelf" });
+  box(140, 162, -110, -50, -130, -96, { mat: "batt", cells: { zp: 8 }, part: "battery" });
+
+  // data: laser terminals (above) to the router, then along the NVLink spine
+  box(130, 200, 100, 130, -60, 0, { mat: "box", mats: { yn: "black" }, cells: { yn: [12, 10] }, part: "router" });
+  pipe([[170, 112, 130], [170, 112, 0]], 1.4, { mat: "black", flow: "data", part: "router" });
+  pipe([[150, 100, -40], [150, 64, -40], [132, 64, -40], [132, 64, -28], [-204, 64, -28]], 1.2, { mat: "black", flow: "data", part: "spine" });
+}
+
+/* ---------- views ---------- */
+const VIEWS = {
+  whole: { build: buildWhole, az: 30, el: 22, fig: "Fig 1", title: "Whole satellite<small>70 m wingspan · 20 m tall</small>", faces: null, flows: null, unit: 1 },
+  core: { build: buildCore, az: 36, el: 30, fig: "Fig 2", title: "Compute module, cut away<small>27 trays · 72 GPUs</small>", faces: null, flows: null, unit: 1 },
+};
+for (const k in VIEWS) { FACES = []; FLOWS = []; VIEWS[k].build(); VIEWS[k].faces = FACES; VIEWS[k].flows = FLOWS; }
+
+/* ---------- state and per-frame transforms ---------- */
+const S = { view: "whole", az: 30, el: 22, load: .8, flow: "heat", tray: 0, trayT: 0, sel: null, sys: null, hover: null, t: 0 };
+const tAz = { v: 30 }, tEl = { v: 22 };
+function groupXf(g) {
+  if (g === "pull") return { t: p => [p[0], p[1] - 120 * S.tray, p[2]] };
+  if (g.startsWith("las")) {
+    const [, sx, sz] = g.split("_").map(Number), cx = sx * 16, cz = sz * 14.5;
+    const m = rotM(0, -sx * sz * 18, 25 * Math.sin(S.t * .4 + sx + 2 * sz));
+    return { m, pre: [-cx, 0, -cz], t: p => [p[0] + cx, p[1], p[2] + cz] };
+  }
+  return null;
+}
+function xfPoint(x, p) { let q = p; if (x.pre) q = [q[0] + x.pre[0], q[1] + x.pre[1], q[2] + x.pre[2]]; if (x.m) q = mulV(x.m, q); return x.t(q); }
+
+/* ---------- renderer ---------- */
+const svg = document.getElementById("fig"), stage = document.getElementById("stage");
+const vb = { x: -400, y: -250, w: 800, h: 450 };
+let snapFrame = true;
+const shade = (rgb, k) => `rgb(${Math.min(255, rgb[0] * k) | 0},${Math.min(255, rgb[1] * k) | 0},${Math.min(255, rgb[2] * k) | 0})`;
+function grey(rgb) { const l = rgb[0] * .3 + rgb[1] * .55 + rgb[2] * .15, m = l * .5 + 125 * .5; return [m, m, m * 1.02]; }
+function render() {
+  const V = VIEWS[S.view];
+  const a = S.az * D2R, e = S.el * D2R, ca = Math.cos(a), sa = Math.sin(a), ce = Math.cos(e), se = Math.sin(e);
+  const view = [-ce * sa, -ce * ca, se];
+  const L = norm([-.55 * ca + .45 * sa, .55 * sa + .45 * ca, .8]);
+  const H = norm([L[0] + view[0], L[1] + view[1], L[2] + view[2]]);
+  const P = (p) => { const X = p[0] * ca - p[1] * sa, Y = p[0] * sa + p[1] * ca; return [X, -(Y * se + p[2] * ce), -Y * ce + p[2] * se]; };
+  const xfs = {}, getX = g => (g in xfs ? xfs[g] : (xfs[g] = groupXf(g)));
+  const focus = S.hover || S.sel, sysF = S.sys, items = [];
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  const grow = (sx, sy) => { if (sx < minX) minX = sx; if (sx > maxX) maxX = sx; if (sy < minY) minY = sy; if (sy > maxY) maxY = sy; };
+  for (const f of V.faces) {
+    const x = getX(f.g), v = x ? f.v.map(p => xfPoint(x, p)) : f.v;
+    const n = norm(newell(v));
+    if (dot(n, view) <= 0) continue;
+    let depth = 0, d = "";
+    for (let i = 0; i < v.length; i++) { const q = P(v[i]); depth += q[2]; d += (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1); grow(q[0], q[1]); }
+    const lit = .6 + .48 * Math.max(0, dot(n, L)) + (SHINY[f.mat] || 0) * .3 * Math.pow(Math.max(0, dot(n, H)), 24);
+    const part = PARTS[f.part], inFocus = focus ? f.part === focus : sysF ? part.sys === sysF : true;
+    const base = inFocus ? MAT[f.mat] : grey(MAT[f.mat]);
+    items.push({ z: depth / v.length, s: `<path d="${d}Z" fill="${shade(base, lit)}" stroke="${shade(base, lit * .62)}" data-p="${f.part}"${focus && f.part === focus ? ' class="hl"' : ""}/>` });
+  }
+  // flows: dashed lines that ride their pipes, drawn in depth order just above them
+  const kinds = flowKey[S.flow], unit = vb.w / 520, speed = (.25 + S.load) * 26 * unit;
+  for (const fl of V.flows) {
+    if (!kinds.includes(fl.kind) && !(fl.kind === "cold" && kinds.includes("cold"))) continue;
+    const x = getX(fl.g);
+    let pts = fl.pts;
+    if (fl.beam) { // a laser beam from the terminal's lens outward
+      const [sx, sz] = fl.beam, cx = sx * 16, cz = sz * 14.5;
+      pts = [[cx + sx * 4.5, 0, cz], [cx + sx * 120, 0, cz + sz * 40]].map(p => xfPoint(x, p));
+    } else if (x) pts = pts.map(p => xfPoint(x, p));
+    let cum = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = P(pts[i]), B = P(pts[i + 1]), len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      const kind = fl.hotTail && i >= 4 ? "hot" : fl.kind;
+      const sw = (fl.beam ? 1.6 : 2.4) * unit, dash = 7 * unit, gap = 9 * unit;
+      const off = (-(S.t * speed) + cum) % (dash + gap);
+      items.push({ z: Math.max(A[2], B[2]) + (fl.lift || 1) + 2, s: `<path class="flow ${kind}" d="M${A[0].toFixed(1)} ${A[1].toFixed(1)}L${B[0].toFixed(1)} ${B[1].toFixed(1)}" stroke-width="${sw.toFixed(2)}" stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>` });
+      cum += len;
+    }
+  }
+  items.sort((p, q) => p.z - q.z);
+  let s = ""; for (const it of items) s += it.s;
+  svg.innerHTML = s;
+  const pad = .07, w = maxX - minX, h = maxY - minY;
+  const T = { x: minX - w * pad, y: minY - h * pad, w: w * (1 + 2 * pad), h: h * (1 + 2 * pad) };
+  const k = snapFrame ? 1 : .12;
+  for (const key in T) vb[key] += (T[key] - vb[key]) * k;
+  svg.setAttribute("viewBox", `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+  snapFrame = false;
+}
+
+/* ---------- readout, legend, sheet ---------- */
+const $ = id => document.getElementById(id);
+const readout = $("readout"), legend = $("legend"), sysBox = $("systems"), sheet = $("sheet");
+function updateReadout() {
+  const st = M.state(S.load);
+  readout.innerHTML =
+    `<dt>Compute</dt><dd>${st.compute.toFixed(0)} kW</dd>` +
+    `<dt>Per GPU slot</dt><dd>${st.perGpu.toFixed(2)} kW</dd>` +
+    `<dt>Radiator</dt><dd>≈ ${st.radT.toFixed(0)} °C</dd>` +
+    `<dt>Solar spare</dt><dd>${st.margin.toFixed(0)} kW</dd>`;
+  $("loadLabel").textContent = `GPU load ${Math.round(S.load * 100)}%`;
+}
+const LEG = { heat: [["cold", "Cold coolant"], ["hot", "Warm coolant"]], power: [["power", "Electric power"]], data: [["data", "Data and results"]] };
+function updateLegend() { legend.innerHTML = LEG[S.flow].map(([c, t]) => `<span class="${c}"><i></i>${t}</span>`).join(""); }
+const partsOf = sys => Object.keys(PARTS).filter(k => PARTS[k].sys === sys);
+sysBox.innerHTML = SYSTEMS.map(s => `<button class="sys" data-sys="${s.id}" aria-pressed="false"><span class="sw" style="background:rgb(${MAT[s.swatch]})"></span><span class="nm">${s.name}</span><span class="ct">${partsOf(s.id).length} parts</span></button>`).join("");
+const CHAINS = {
+  heat: ["--cold", "--heat", "<b>Heat.</b> Every GPU and CPU sits under a cold plate. Coolant from the radiator enters the supply manifold, flows through each tray's plates, and comes out warm into the return manifold. Pumps send it up the radiator, where it spreads across both faces and radiates into space, then it comes back cold."],
+  power: ["--power", null, "<b>Power.</b> Sunlight on the wings becomes current that runs along the booms into the body. The power shelf converts it to the rack's DC and feeds it along a copper bus bar under every tray. The battery only matters in rare eclipses."],
+  data: ["--data", null, "<b>Data.</b> Jobs arrive by laser from Starlink satellites. The router passes them to the trays, and the 72 GPUs share the work over the NVLink spine and switch trays. Results go back out the same laser links and reach the ground through Starlink."],
+};
+function chainHtml() {
+  return `<ul class="chain">${["heat", "power", "data"].map(k => `<li style="--c:var(${CHAINS[k][0]})"><span>${CHAINS[k][2]}</span></li>`).join("")}</ul>`;
+}
+function renderSheet() {
+  const st = M.state(S.load), focus = S.hover || S.sel;
+  sysBox.querySelectorAll(".sys").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sys === (focus ? PARTS[focus].sys : S.sys))));
+  const btns = sys => `<ul class="parts">${partsOf(sys).map(k => `<li><button data-part="${k}" aria-pressed="${k === focus}">${PARTS[k].name}</button></li>`).join("")}</ul>`;
+  if (focus) {
+    const p = PARTS[focus], sys = SYSTEMS.find(s => s.id === p.sys);
+    sheet.innerHTML = `<p class="eyebrow">${sys.name}</p><h2>${p.name}</h2><p>${p.text}</p><div class="stat">${p.stat(st)}</div>${p.go ? `<p style="margin-top:12px"><button data-go="${p.go}">Open the compute module</button></p>` : ""}${btns(p.sys)}`;
+  } else if (S.sys) {
+    const sys = SYSTEMS.find(s => s.id === S.sys);
+    sheet.innerHTML = `<p class="eyebrow">System</p><h2>${sys.name}</h2><p>${sys.lede}</p>${btns(S.sys)}`;
+  } else {
+    sheet.innerHTML = `<p class="eyebrow">How the parts work together</p><h2>Sunlight in, heat out, answers back</h2>` +
+      `<p>AI1 is a data center reduced to its three flows. Pick one above the slider to watch it move through the drawing.</p>${chainHtml()}` +
+      `<div class="stat">${M.gpus} GPUs · ${M.peak} kW peak · ${M.solar.toFixed(0)} kW of solar · ${M.radArea} m² radiator</div>`;
+  }
+}
+
+/* ---------- interaction ---------- */
+function setView(v, keepSel) {
+  if (S.view === v) return;
+  svg.classList.add("swap");
+  setTimeout(() => {
+    S.view = v; snapFrame = true;
+    tAz.v = S.az = VIEWS[v].az; tEl.v = S.el = VIEWS[v].el;
+    $("figNo").textContent = VIEWS[v].fig; $("figTitle").innerHTML = VIEWS[v].title;
+    $("hint").innerHTML = v === "whole" ? "Drag to turn · tap a part · <kbd>I</kbd> look inside" : "Drag to turn · tap a part · <kbd>T</kbd> pull out a tray";
+    if (!keepSel) { S.sel = S.hover = null; }
+    renderSheet(); render(); svg.classList.remove("swap"); kick();
+  }, 180);
+  $("vWhole").setAttribute("aria-pressed", String(v === "whole")); $("vCore").setAttribute("aria-pressed", String(v === "core"));
+  $("tray").hidden = v !== "core";
+}
+function choosePart(k) {
+  S.sel = k; S.sys = null; const p = PARTS[k];
+  if (p.view !== "both" && p.view !== S.view) setView(p.view, true);
+  renderSheet(); kick();
+}
+let drag = null;
+stage.addEventListener("pointerdown", ev => { drag = { x: ev.clientX, y: ev.clientY, az: tAz.v, el: tEl.v, moved: false }; stage.setPointerCapture(ev.pointerId); });
+stage.addEventListener("pointermove", ev => {
+  if (drag) {
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) { drag.moved = true; stage.classList.add("dragging"); }
+    if (drag.moved) { tAz.v = drag.az - dx * .4; tEl.v = Math.max(-40, Math.min(75, drag.el + dy * .3)); kick(); }
+    return;
+  }
+  if (ev.pointerType !== "mouse") return;
+  const p = ev.target.dataset && ev.target.dataset.p;
+  if ((p || null) !== S.hover) { S.hover = p || null; renderSheet(); }
+});
+stage.addEventListener("pointerleave", () => { if (S.hover) { S.hover = null; renderSheet(); } });
+stage.addEventListener("pointerup", ev => {
+  const wasDrag = drag && drag.moved; drag = null; stage.classList.remove("dragging");
+  if (wasDrag) return;
+  const hit = document.elementFromPoint(ev.clientX, ev.clientY), p = hit && hit.dataset && hit.dataset.p;
+  S.hover = null;
+  if (p && p === S.sel && PARTS[p].go) { setView(PARTS[p].go); return; }
+  S.sel = p && p !== S.sel ? p : null; if (S.sel) S.sys = null; renderSheet(); kick();
+});
+sysBox.addEventListener("click", ev => { const b = ev.target.closest(".sys"); if (!b) return; S.sys = S.sys === b.dataset.sys && !S.sel ? null : b.dataset.sys; S.sel = null; renderSheet(); kick(); });
+sheet.addEventListener("click", ev => {
+  const g = ev.target.closest("[data-go]"); if (g) { setView(g.dataset.go); return; }
+  const b = ev.target.closest("[data-part]"); if (b) choosePart(b.dataset.part);
+});
+$("vWhole").addEventListener("click", () => setView("whole"));
+$("vCore").addEventListener("click", () => setView("core"));
+document.querySelectorAll("[data-flow]").forEach(b => b.addEventListener("click", () => {
+  S.flow = b.dataset.flow; document.querySelectorAll("[data-flow]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); updateLegend(); kick();
+}));
+$("load").addEventListener("input", ev => { S.load = ev.target.value / 100; updateReadout(); if (S.sel || S.hover) renderSheet(); kick(); });
+const trayBtn = $("tray");
+function setTray(on) { S.trayT = on ? 1 : 0; trayBtn.setAttribute("aria-pressed", String(on)); trayBtn.textContent = on ? "Slide the tray back" : "Pull out a tray"; if (on && !S.sel) { S.sel = "coldplates"; renderSheet(); } kick(); }
+trayBtn.addEventListener("click", () => setTray(S.trayT < .5));
+trayBtn.hidden = true;
+stage.addEventListener("keydown", ev => {
+  const k = ev.key;
+  if (k === "ArrowLeft") tAz.v -= 10; else if (k === "ArrowRight") tAz.v += 10;
+  else if (k === "ArrowUp") tEl.v = Math.min(75, tEl.v + 8); else if (k === "ArrowDown") tEl.v = Math.max(-40, tEl.v - 8);
+  else if (k === "i" || k === "I") setView(S.view === "whole" ? "core" : "whole");
+  else if ((k === "t" || k === "T") && S.view === "core") setTray(S.trayT < .5);
+  else if (k === "Escape") { S.sel = S.sys = null; renderSheet(); }
+  else return;
+  ev.preventDefault(); kick();
+});
+
+/* ---------- motion ---------- */
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+let raf = 0, last = 0, visible = true;
+function frame(t) {
+  raf = 0;
+  const dt = Math.min(.05, last ? (t - last) / 1000 : .016); last = t;
+  const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 7);
+  S.az += (tAz.v - S.az) * k; S.el += (tEl.v - S.el) * k;
+  S.tray += (S.trayT - S.tray) * (reduce.matches ? 1 : 1 - Math.exp(-dt * 5));
+  if (!reduce.matches) S.t += dt;
+  render();
+  const moving = !reduce.matches;
+  if (visible && !document.hidden && moving) raf = requestAnimationFrame(frame); else last = 0;
+}
+function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible) kick(); }).observe(stage);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
+
+updateReadout(); updateLegend(); renderSheet(); render(); kick();
+})();
+</script>
+
+</body></html>
