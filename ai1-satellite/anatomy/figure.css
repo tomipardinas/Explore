@@ -15,3 +15,43 @@
 
 .ai-led circle{opacity:.25;transition:opacity .4s var(--anatomy-ease)}
 .it[data-chip] ~ .it .ai-led circle{opacity:.25}
+
+/* orbit backdrop */
+.ai-stars circle{fill:var(--anatomy-muted)}
+.ai-ground{fill:var(--anatomy-shade-1);stroke:var(--anatomy-lo);stroke-width:.8}
+.ai-air{fill:none;stroke:var(--anatomy-faint);stroke-width:1}
+.ai-craft{will-change:transform}
+.ai-stage{margin-inline:-24px}
+.ai-stage .iso-svg{overflow:hidden}
+@media (max-width:560px){.ai-stage{margin-inline:-12px}}
+
+/* picking a system: everything else steps back */
+.it{transition:opacity .35s var(--anatomy-ease)}
+.ai-sat[data-focus] .it:not([data-pick]){opacity:.28}
+.ai-sat .it[data-sys]{cursor:pointer}
+.it[data-pick]>.iso-solid>.iso-edge,.it[data-pick] .iso-edge{stroke:var(--anatomy-strong)}
+
+/* effects: hidden until their system runs */
+.ai-fx [data-fx]{opacity:0;transition:opacity .4s var(--anatomy-ease)}
+.ai-fx [data-fx][data-run]{opacity:1}
+.ai-plume[data-run]{animation:ai-flicker .16s steps(2) infinite alternate}
+.ai-beam[data-run]{animation:ai-pulse 1.4s var(--anatomy-ease) infinite alternate}
+@keyframes ai-flicker{from{opacity:.75}to{opacity:1}}
+@keyframes ai-pulse{from{opacity:.55}to{opacity:1}}
+@media (prefers-reduced-motion: reduce){.ai-plume[data-run],.ai-beam[data-run]{animation:none}}
+
+/* parts panel */
+.ai-panel{margin-top:18px;display:grid;gap:14px;font-size:13px}
+.ai-info{min-height:5.6em;border-top:1px solid var(--anatomy-mid);padding-top:12px}
+.ai-info-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.ai-info-name{color:var(--anatomy-text);font-weight:600}
+.ai-info-stat{color:var(--anatomy-lit);font-family:var(--anatomy-mono);font-size:11.5px;letter-spacing:.02em}
+.ai-info-text{margin:6px 0 0;color:var(--anatomy-muted);line-height:1.55;text-wrap:pretty}
+.ai-parts{display:flex;flex-wrap:wrap;gap:6px}
+.ai-part{font:inherit;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--anatomy-mid);background:transparent;color:var(--anatomy-muted);cursor:pointer;transition:color .2s,border-color .2s,background .2s}
+.ai-part:hover{color:var(--anatomy-text);border-color:var(--anatomy-lo)}
+.ai-part[aria-pressed="true"]{color:var(--anatomy-text);border-color:var(--anatomy-lit);background:color-mix(in srgb,var(--anatomy-lit) 14%,transparent)}
+.ai-part:focus-visible{outline:1px solid var(--anatomy-lit);outline-offset:2px}
+.ai-load{display:grid;grid-template-columns:auto 1fr 3.2em;gap:10px;align-items:center;color:var(--anatomy-muted);font-size:12px}
+.ai-load input{width:100%;accent-color:var(--anatomy-lit)}
+.ai-load output{font-family:var(--anatomy-mono);color:var(--anatomy-text);text-align:right}

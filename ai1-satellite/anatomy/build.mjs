@@ -320,7 +320,7 @@ for (const y of [-4, 16]) {
   turned("tracker", F, [[0, 3.4], [6, 3.4], [6, 3.8], [12, 5.6]], { tone: "mid" }, { extra: Ln(G.circleOf(F, 12, 4.8, P, 40), { tone: "lo" }) });
 }
 const LASERS = [[142, 46], [142, -46], [-112, -46]];
-const LASER_DIRS = [[0.6, 0.7, 0.4], [0.7, -0.5, 0.5], [-0.6, -0.6, 0.5]];
+const LASER_DIRS = [[0.95, 0.1, 0.55], [0.7, -0.5, 0.5], [-0.9, 0.2, 0.4]];
 LASERS.forEach(([x, y], i) => {
   const F = vframe(x, y, 62);
   disc("laser.base", F, 0, 2, 6, { tone: "lo" }, { extra: Dots(G.dotsOf(F, 2, 5, 6, P, { all: true }), { size: 0.4 }) });
@@ -428,15 +428,76 @@ line("ctrl.battery", [[108, 6, 68], [108, 24, 68]], 0.5, { tone: "lo", bend: 2, 
 A.settle(R, P);
 R.items.sort((a, b) => a.key - b.key);
 
-const groups = R.items.map((item, index) => {
+const SYSTEMS = [
+  { id: "rack", name: "Compute rack", text: "18 GPU trays (72 GPUs and 36 CPUs), 9 NVLink switch trays in the middle that let every GPU talk to every other at full speed, and a power shelf at the bottom and top." },
+  { id: "tray", name: "GPU tray", text: "Each tray carries four GPUs and two CPUs under copper cold plates, plumbed in series by the loop on the tray. Tap the tray or press T to slide it in or out." },
+  { id: "coolant", name: "Pumps and manifolds", text: "Two redundant pumps push water-glycol up the supply manifold, through every cold plate, out the return manifold and up to the radiator. Every watt the chips use ends up in this loop." },
+  { id: "radiator", name: "Radiator", text: "The only way to get rid of heat in space is to radiate it. The panels stand edge-on to the Sun so sunlight barely touches them, and both faces glow infrared into cold space." },
+  { id: "wings", name: "Solar wings", text: "Two wings, about 70 m tip to tip, on drives that turn them to the Sun. In a dawn-dusk orbit the Sun stays almost square to them, so they barely have to move." },
+  { id: "power", name: "Power and battery", text: "A harness from the wing's drive feeds the bottom power shelf, which turns it into the steady DC the trays need. The battery carries the satellite through the few eclipses this orbit has." },
+  { id: "lasers", name: "Laser terminals", text: "Three optical terminals carry the data instead of radio antennas, linking AI1 to its neighbours in the cluster and to the Starlink network. Each one keeps its beam locked on a moving partner." },
+  { id: "computer", name: "Flight computer", text: "Runs the satellite itself: pointing, pumps, power switching and links. It runs on the battery, so it stays up even when the rack throttles down." },
+  { id: "trackers", name: "Star trackers", text: "Two small cameras photograph the stars to know exactly which way AI1 points, so the wings face the Sun and the radiator stays edge-on." },
+  { id: "thruster", name: "Hall thruster", text: "Ionises argon from the tank and accelerates it with electric fields. Small, steady pushes hold altitude against the thin air at 600 km and keep AI1 in its slot in the cluster." },
+];
+const sysOf = (name) => {
+  const n = name.replace(/[:#].*$/, "");
+  if (/^tray\./.test(n)) return "tray";
+  if (/^rack\./.test(n)) return "rack";
+  if (/^(pump|pipe)\./.test(n)) return "coolant";
+  if (/^rad\./.test(n)) return "radiator";
+  if (/^(wing|sada)\./.test(n)) return "wings";
+  if (/^(harness|battery|ctrl\.battery)/.test(n)) return "power";
+  if (/^(laser|data\.laser|bulkhead)/.test(n)) return "lasers";
+  if (/^(fc|data\.fc|ctrl\.pumps)/.test(n)) return "computer";
+  if (/^tracker/.test(n)) return "trackers";
+  if (/^(thruster|tank)/.test(n)) return "thruster";
+  return "";
+};
+const groups = R.items.map((item) => {
   const [mx, my, mz] = item.move;
   const moving = item.piece === "tray";
-  return `<g class="it"${moving ? ` data-k="${item.key.toFixed(3)}" data-m="${mx},${my},${mz}"` : ` data-k="${item.key.toFixed(3)}"`} data-name="${item.name}"${item.attrs ?? ""}>${item.svg}</g>`;
+  const sys = item.sys ?? sysOf(item.name);
+  return `<g class="it"${moving ? ` data-k="${item.key.toFixed(3)}" data-m="${mx},${my},${mz}"` : ` data-k="${item.key.toFixed(3)}"`} data-name="${item.name}"${sys ? ` data-sys="${sys}"` : ""}${item.attrs ?? ""}>${item.svg}</g>`;
 });
+
+// ---------- the orbit around it: Earth's limb below, stars drifting behind ----------
+const EARTH = { cx: W / 2, cy: H - 34 + 1400, r: 1400 };
+const space = [];
+{
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const stars = Array.from({ length: 70 }, () => [rnd() * W, rnd() * (H - 60), 0.3 + rnd() * 0.5]);
+  const dots = (dx) => stars.map(([x, y, a]) => `<circle cx="${f2(x + dx)}" cy="${f2(y)}" r="${f2(0.5 + a * 0.6)}" opacity="${f2(a)}"/>`).join("");
+  space.push(`<g class="ai-stars" data-part="stars">${dots(0)}${dots(W)}</g>`);
+  space.push(`<g class="ai-earth"><circle class="ai-air" cx="${EARTH.cx}" cy="${EARTH.cy}" r="${EARTH.r + 6}"/><circle class="ai-ground" cx="${EARTH.cx}" cy="${EARTH.cy}" r="${EARTH.r}"/><circle class="ai-air" cx="${EARTH.cx}" cy="${EARTH.cy}" r="${EARTH.r + 2.5}"/></g>`);
+}
+
+// ---------- effects drawn over the craft, shown while their system is picked ----------
+const fx = [];
+{
+  // thruster plume: a cone of fading lines leaving the exit along +x
+  const exit = G.add3(THR.o, G.mul3(THR.a, 14));
+  const rays = Array.from({ length: 9 }, (_, i) => {
+    const t = (i / 9) * Math.PI * 2;
+    const a = [exit[0], exit[1] + Math.cos(t) * 4.5, exit[2] + Math.sin(t) * 4.5];
+    const b = [exit[0] + 58, exit[1] + Math.cos(t) * 15, exit[2] + Math.sin(t) * 15];
+    return k.fadeLineSvg([at(a), at(b)], { fade: [0, 48], tone: "lit", stops: 8 });
+  });
+  const core = k.fadeLineSvg([at(exit), at(G.add3(exit, [70, 0, 0]))], { fade: [0, 48], tone: "lit", stops: 8 });
+  fx.push(`<g class="ai-plume" data-fx="thruster">${rays.join("")}${core}</g>`);
+  // laser beams: from each lens out along its pointing direction
+  const beams = LASERS.map(([x, y], i) => {
+    const d = G.unit3(LASER_DIRS[i]);
+    const c = [x, y, 76];
+    return k.fadeLineSvg([at(G.add3(c, G.mul3(d, 3.9))), at(G.add3(c, G.mul3(d, 110)))], { fade: [0, 48], tone: "lit", stops: 8 });
+  });
+  fx.push(`<g class="ai-beam" data-fx="lasers">${beams.join("")}</g>`);
+}
 
 const LABEL_TEXT =
   "SpaceX's AI1 compute satellite in orbit with both solar wings and its radiator deployed (wings and radiator shortened to fit). The compute bay's front is open: a rack of 18 GPU trays, 9 NVLink switch trays and two power shelves, with one GPU tray slid out to show four GPU and two CPU cold plates joined by a coolant loop. Manifolds carry coolant to the pumps on the deck and up to the radiator standing on the roof; a harness brings power from the left wing's solar array drive. Laser terminals, star trackers, an argon tank, a Hall thruster and a battery sit on the deck.";
-const svg = k.figureSvg({ width: W, height: H, label: LABEL_TEXT, body: [...back, `<g class="ai-sat">${groups.join("")}</g>`] });
+const svg = k.figureSvg({ width: W, height: H, label: LABEL_TEXT, body: [...space, `<g class="ai-craft">${back.join("")}<g class="ai-sat">${groups.join("")}</g><g class="ai-fx">${fx.join("")}</g></g>`] });
 
 const AX = (v) => at(v).map((c, i) => c - at([0, 0, 0])[i]);
 const DATA = {
@@ -446,6 +507,8 @@ const DATA = {
   EZ: AX([0, 0, 1]),
   spring: SPRING,
   lines: LINES.map(({ name, kind }) => ({ name, kind })),
+  systems: SYSTEMS,
+  W,
 };
 
 const s120 = M.state((M.sustained / M.peak - M.idle) / (1 - M.idle));
@@ -457,7 +520,7 @@ const body =
   k.plateHtml({
     fig: "Fig 1",
     title: "AI1, deployed, bay open",
-    hint: "Move to set load · T slides the tray",
+    hint: "Tap a part · arrows set load",
     readout: `${s120.compute.toFixed(0)} kW · ${s120.flow.toFixed(1)} kg/s`,
     keys: [
       { mark: "lit", label: "The work: GPU cold plates on the pulled tray, and power or coolant moving through the lines" },
@@ -466,7 +529,10 @@ const body =
       { mark: "flat", label: "Power: two solar wings on rotating drives, battery, harness into the bottom power shelf" },
     ],
     caption: `SpaceX's AI1 in its dawn-dusk orbit, with both solar wings turned to the Sun and its ${M.radArea} m² liquid radiator standing edge-on to it. The wings really span about 70 m and the radiator stands about 20 m tall, so both are drawn far shorter here to keep the compute bay readable. The rack draws ${M.peak} kW at peak and ${M.sustained} kW sustained, and every watt of it becomes heat: cold plates on each GPU and CPU pass it into water-glycol, the pumps move it at about ${s120.flow.toFixed(1)} kg/s at ${M.sustained} kW (a ${s120.dT.toFixed(0)} K rise), and the deployed radiator, held edge-on to the Sun, sheds it from both faces at around ${s120.radT.toFixed(0)} °C. Numbers come from one model: ${M.arrayArea.toFixed(0)} m² of array at 250 W/m², emissivity 0.9, a 12 K design rise. SpaceX has published the outline and named NVIDIA Rubin GPUs and Vera CPUs; the rack layout follows NVIDIA's NVL72, and the rest of the interior is an informed illustration, not SpaceX's drawing.`,
-    body: `<div class="iso-stage ai-stage" tabindex="0" role="slider" aria-label="AI1 compute satellite. Left and right arrows set the compute load; T or Space slides the GPU tray in or out." aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">${svg}<span class="ai-sr" role="status" aria-live="polite" data-status></span></div>`,
+    body: `<div class="iso-stage ai-stage" tabindex="0" role="group" aria-label="AI1 compute satellite floating in orbit. Tap or hover a part to see what it does; left and right arrows set the compute load; T or Space slides the GPU tray in or out.">${svg}<span class="ai-sr" role="status" aria-live="polite" data-status></span></div>` +
+      `<div class="ai-panel"><div class="ai-info" aria-live="polite"><div class="ai-info-head"><span class="ai-info-name" data-info-name>${SYSTEMS[0].name}</span><span class="ai-info-stat" data-info-stat></span></div><p class="ai-info-text" data-info-text>${SYSTEMS[0].text}</p></div>` +
+      `<div class="ai-parts" role="group" aria-label="Parts">${SYSTEMS.map((sys) => `<button type="button" class="ai-part" data-sys="${sys.id}" aria-pressed="false">${sys.name}</button>`).join("")}</div>` +
+      `<label class="ai-load"><span>Compute load</span><input type="range" id="ai-load" min="0" max="100" step="1" value="80"><output for="ai-load" data-load-out>80%</output></label></div>`,
   });
 
 const AUTO = process.argv.includes("--auto");
