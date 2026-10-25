@@ -1,4 +1,4 @@
-// AI1 compute satellite on its integration stand, compute bay open, one GPU tray pulled out.
+// AI1 compute satellite in orbit, wings and radiator deployed, compute bay open, one GPU tray pulled out.
 // node build.mjs [--light] [--audit]
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,15 +14,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const THEME = process.argv.includes("--light") ? "light" : "dark";
 const M = makeModel();
 
-const W = 600;
+const W = 760;
 const H = 470;
 const AZIMUTH = 56;
 const ELEVATION = 30;
 
 // ---------- world plan (units ≈ 1 cm of a 1:13 model; only proportions matter) ----------
-const PLATE = { x: -172, y: -84, w: 344, d: 168, r: 10 };
-const PLATE_H = 10;
-const FOOT_H = 5;
 const DECK = { x: -150, y: -62, w: 300, d: 124, r: 4 };
 const DECK_Z = [50, 62];
 const HOUSE = { x0: -100, x1: 30, y0: -56, y1: 44, z0: 62, z1: 180 };
@@ -35,7 +32,7 @@ const SPRING = { stagger: 0.035, stiffness: 64, damping: 14.2, substeps: 4 };
 const ORDER = ["tray"];
 
 const P = k.fitProjection(
-  [...k.boxCorners(PLATE, -PLATE_H - FOOT_H, 0), [-150, -56, 198], [30, -56, 200], [30, 52, 200], [-150, 56, 198], [-92, 96, 152], [8, 96, 152], [166, -20, 66]],
+  [[-150, -62, 50], [150, -62, 50], [150, 62, 50], [-150, 62, 50], [-423, -66, 103], [-423, 58, 103], [440, -52, 103], [440, 72, 103], [-94, 45, 376], [24, 47, 376], [-92, 96, 152], [8, 96, 152], [166, -20, 66]],
   W,
   H,
   { pad: 26, azimuth: AZIMUTH, elevation: ELEVATION },
@@ -116,53 +113,9 @@ function line(name, points, r, { tone = "mid", bend, fittings = [false, false], 
   return route;
 }
 
-// ---------- the bench: base plate on feet, ruler strip, label plate ----------
 const back = [];
-back.push(`<path class="iso-halo" d="${k.haloOf(PLATE, -PLATE_H - FOOT_H, PLATE_H, P)}"/>`);
-const byDepth = (points) => [...points].sort((a, b) => k.depthOf([a[0], a[1], 0], P) - k.depthOf([b[0], b[1], 0], P));
-for (const [x, y] of byDepth(k.corners(PLATE, 22))) {
-  back.push(S(k.cylinder(x, y, 7, -PLATE_H - FOOT_H, 1.6, P, 28), { tone: "lo" }));
-  back.push(S(k.cylinder(x, y, 5.4, -PLATE_H - FOOT_H + 1.6, FOOT_H - 1.6, P, 28), { tone: "mid" }));
-}
-back.push(S(k.slabOf(PLATE, -PLATE_H, PLATE_H, P, 8, 1.6), { tone: "mid", inner: Ln(k.sideSeam(PLATE, -4, P, 8), { tone: "faint" }) }));
-back.push(Ln(k.planOutline(k.insetPlan(PLATE, 5), 0, P), { tone: "lo" }));
-const plateScrews = k.corners(PLATE, 10);
-back.push(Ln(plateScrews.map(([x, y]) => k.ring(x, y, 2.2, 0, P, 16)).join(""), { tone: "lo" }));
-back.push(Dots(plateScrews.map(([x, y]) => at([x, y, 0])), { size: 0.5 }));
-record(A.slab(PLATE, -PLATE_H, PLATE_H, { name: "stand.plate", ground: true }, 8));
-const STRIP = { x: PLATE.x + 30, y: PLATE.y + PLATE.d - 13, w: 220, d: 6, r: 1 };
-back.push(S(k.slabOf(STRIP, 0, 0.6, P, 3), { tone: "lo", crease: "none" }));
-const ticks = k.topTicks(STRIP.x + 4, STRIP.x + STRIP.w - 4, 4, 5, STRIP.y, 0.6, [1.8, 3.4], P);
-back.push(Ln(ticks.minor, { tone: "lo" }), Ln(ticks.major, { tone: "mid" }));
-const LABEL = { x: STRIP.x + STRIP.w + 16, y: PLATE.y + PLATE.d - 30, w: 40, d: 18, r: 1.2 };
-back.push(S(k.slabOf(LABEL, 0, 0.8, P, 3), { tone: "lo", crease: "none" }));
-back.push(Ln(k.planOutline(k.insetPlan(LABEL, 1.4), 0.8, P, 3), { tone: "faint" }));
-back.push(k.faceTextSvg(k.topMatrix([LABEL.x + 4, LABEL.y + 6.4], 0.8, P, "x"), "AI1 · SN 001", { size: 3.2, tone: "mid" }));
-back.push(Ln([22, 15].map((w, i) => k.lineOnTop([LABEL.x + 4, LABEL.y + 10.4 + i * 3.4], [LABEL.x + 4 + w, LABEL.y + 10.4 + i * 3.4], 0.8, P)).join(""), { tone: "lo", free: true }));
-back.push(Dots([at([LABEL.x + LABEL.w - 2.6, LABEL.y + 2.6, 0.8]), at([LABEL.x + LABEL.w - 2.6, LABEL.y + LABEL.d - 2.6, 0.8])], { size: 0.45 }));
-
-// ---------- integration stand: adapter pedestal and two ground-support posts ----------
-const F0 = vframe(0, 0, 0);
-turned("stand.pedestal", F0, [[0, 46], [3, 46], [3, 28], [38, 22], [38, 40], [42, 40]], { tone: "lo" }, {
-  extra: Dots(G.dotsOf(F0, 3, 40, 16, P, { all: true }), { size: 0.5, tone: "mid" }) + Dots(G.dotsOf(F0, 42, 36.5, 24, P, { all: true }), { size: 0.45, tone: "mid" }),
-});
-disc("adapter.ring", F0, 42, 46.4, 34, { tone: "mid" }, { inner: Ln(G.arcOf(F0, 44.2, 34, P), { tone: "faint" }) });
-disc("adapter.band", F0, 46.4, 50, 31, { tone: "lo" });
-for (const sx of [-1, 1]) {
-  const x = sx * 128;
-  const F = vframe(x, 0, 0);
-  disc("stand.post.foot", F, 0, 2.2, 9, { tone: "lo" }, { extra: Dots(G.dotsOf(F, 2.2, 7, 6, P, { all: true }), { size: 0.45 }) });
-  disc("stand.post", F, 2.2, 26, 3.2, { tone: "mid" }, { inner: Ln(G.arcOf(F, 14, 3.2, P) + G.arcOf(F, 16, 3.2, P), { tone: "faint" }) });
-  disc("stand.post", F, 31, 44.6, 3.2, { tone: "mid" }, { inner: Ln(G.arcOf(F, 38, 3.2, P), { tone: "faint" }) });
-  disc("stand.post.collar", F, 26, 31, 5, { tone: "mid" }, { extra: Faded(G.ribsOf(F, 26, 31, 5, 30, P, { fade: [0.1, 0.55], seams: true }), { tone: "lo" }) });
-  const TS = G.frameAlong([x + 5, 0, 28.5], [1, 0, 0]);
-  disc("stand.post.screw", TS, 0, 1.6, 1, { tone: "lo" });
-  disc("stand.post.knob", TS, 1.6, 4.4, 2.2, { tone: "hi" }, { extra: Faded(G.ribsOf(TS, 1.6, 4.4, 2.2, 16, P, { fade: [0.1, 0.55], seams: true }), { tone: "lo" }) });
-  disc("stand.post.pad", F, 44.6, 50, 7, { tone: "lo" }, { inner: Ln(G.arcOf(F, 47, 7, P), { tone: "faint" }) });
-}
 
 // ---------- bus deck ----------
-back.push(`<path class="iso-halo" d="${k.haloOf(k.insetPlan(DECK, 6), 0, 8, P)}"/>`);
 box("deck", [DECK.x, DECK.y, DECK_Z[0]], [DECK.x + DECK.w, DECK.y + DECK.d, DECK_Z[1]], { tone: "mid" }, {
   r: DECK.r,
   steps: 4,
@@ -170,6 +123,7 @@ box("deck", [DECK.x, DECK.y, DECK_Z[0]], [DECK.x + DECK.w, DECK.y + DECK.d, DECK
   inner: Ln(k.sideSeam(DECK, 54, P, 4) + k.sideSeam(DECK, 58, P, 4), { tone: "faint" }),
   extra: Dots([...Array.from({ length: 13 }, (_, i) => at([-144 + i * 24, DECK.y + DECK.d, 56])), ...Array.from({ length: 5 }, (_, i) => at([DECK.x + DECK.w, -48 + i * 24, 56]))], { size: 0.45, tone: "mid" }),
   bias: -40,
+  ground: true,
 });
 
 // ---------- compute housing: back, side walls, top, header and sill; front open ----------
@@ -241,72 +195,66 @@ const qdOn = (x) => (pc) => {
   return Dots(QD_Z.filter((z) => z > lo && z <= hi).map((z) => at([x - MAN_R * 0.7, MAN_Y + MAN_R * 0.7, z])), { size: 0.42, tone: "hi" });
 };
 
-// ---------- radiator, stowed flat on the roof, with its header and hinge knuckles ----------
-const RAD = { x: -96, y: -52, w: 122, d: 96, r: 2 };
-const RAD_Z = [];
-for (let i = 0; i < 4; i++) {
-  const z0 = HZ + 3 + 1 + i * 3;
-  RAD_Z.push(z0);
-  for (const [x, y] of k.corners(RAD, 6)) box("rad.spacer", [x - 2, y - 2, z0 - 1], [x + 2, y + 2, z0], { tone: "lo" }, { r: 0.6 });
-  const grid = Array.from({ length: 9 }, (_, j) => k.lineOnTop([RAD.x + 6 + j * 13.75, RAD.y], [RAD.x + 6 + j * 13.75, RAD.y + RAD.d], z0 + 2, P)).join("");
-  box("rad.panel", [RAD.x, RAD.y, z0], [RAD.x + RAD.w, RAD.y + RAD.d, z0 + 2], { tone: i === 3 ? "hi" : "mid" }, {
-    r: RAD.r,
-    steps: 3,
-    bevel: 0.4,
-    extra: i === 3 ? Ln(grid, { tone: "faint" }) : "",
-    attrs: ` data-rad="${i}"`,
-  });
-}
-for (let i = 0; i < 3; i++) {
-  for (const y of [-36, 0, 30]) {
-    const z = RAD_Z[i] + 2.5;
-    disc("rad.hinge", G.frameAlong([RAD.x + RAD.w + 1.2, y, z], [0, 1, 0]), -3, 3, 1.2, { tone: "lo" });
-  }
-}
-box("rad.header", [6, HOUSE.y1, HZ + 4], [26, HOUSE.y1 + 8, HZ + 16], { tone: "mid" }, {
+// ---------- radiator, deployed: a root beam on the roof and three panels standing edge-on to the Sun ----------
+const HEADER_Y = HOUSE.y1 + 4;
+box("rad.root", [-96, 40, HZ + 3], [26, 52, HZ + 13], { tone: "mid" }, {
   r: 0.8,
   steps: 2,
   bevel: 0.4,
-  extra: Dots([at([8, HOUSE.y1 + 8, HZ + 6]), at([24, HOUSE.y1 + 8, HZ + 6]), at([8, HOUSE.y1 + 8, HZ + 14]), at([24, HOUSE.y1 + 8, HZ + 14])], { size: 0.45, tone: "hi" }),
+  extra: Dots([-90, -60, -30, 0, 20].map((x) => at([x, 52, HZ + 8])), { size: 0.45, tone: "hi" }),
 });
-const HEADER_Y = HOUSE.y1 + 4;
-
-// ---------- solar wing, stowed as a six-panel stack on its drive ----------
-const WING = { x0: -150, y0: -56, y1: 56, z0: 62, z1: 194, t: 3, gap: 0.6, n: 6 };
-const wingX = (i) => WING.x0 + i * (WING.t + WING.gap);
-for (let i = 0; i < WING.n; i++) {
-  const x0 = wingX(i);
-  const last = i === WING.n - 1;
-  let extra = "";
-  if (last) {
-    const fx = x0 + WING.t + 0.02;
-    const rows = Array.from({ length: 11 }, (_, j) => path3([[fx, WING.y0, WING.z0 + 11 * (j + 1)], [fx, WING.y1, WING.z0 + 11 * (j + 1)]])).join("");
-    const cols = Array.from({ length: 7 }, (_, j) => path3([[fx, WING.y0 + 14 * (j + 1), WING.z0], [fx, WING.y0 + 14 * (j + 1), WING.z1]])).join("");
-    extra = Ln(rows + cols, { tone: "faint" }) + Ln(path3([[fx - 0.02, WING.y1, WING.z0], [fx - 0.02, WING.y1, WING.z1]]), { tone: "lo" });
-  }
-  box("wing.panel", [x0, WING.y0, WING.z0], [x0 + WING.t, WING.y1, WING.z1], { tone: last ? "hi" : "mid" }, { r: 0.5, steps: 2, extra, attrs: last ? ' data-part="cells"' : "" });
-}
-for (let i = 0; i + 1 < WING.n; i += 2) {
-  const xc = (wingX(i) + wingX(i + 1) + WING.t) / 2;
-  for (const y of [-34, 34]) disc("wing.hinge", G.frameAlong([xc, y, WING.z1 + 1.6], [0, 1, 0]), -4, 4, 1.6, { tone: "lo" });
-}
-const WING_FACE = wingX(WING.n - 1) + WING.t;
-for (const [y, z] of [[-44, 78], [44, 78], [-44, 178], [44, 178]]) {
-  const F = G.frameAlong([WING_FACE, y, z], [1, 0, 0]);
-  disc("wing.holddown", F, 0, 1.4, 4, { tone: "mid" }, { extra: Dots([at(G.pointOf(F, 1.4, 0, 0))], { size: 0.6, tone: "hi" }) });
-  disc("wing.holddown.nut", F, 1.4, 3, 2.4, { tone: "lo" }, { steps: 6 });
-}
-// Solar array drive: pedestal and drum between the stack and the housing.
-const SADA = { x0: WING_FACE, x1: -112, y: -4, z: 102, r: 9 };
-box("sada.pedestal", [-126, -14, 62], [-114, 6, SADA.z - SADA.r], { tone: "lo" }, {
-  extra: Dots([at([-124, 6, 66]), at([-116, 6, 66])], { size: 0.45, tone: "hi" }),
-});
-{
-  const F = G.frameAlong([SADA.x0, SADA.y, SADA.z], [1, 0, 0]);
-  turned("sada.drum", F, [[0, 6], [2.4, 6], [2.4, SADA.r], [SADA.x1 - SADA.x0 - 3, SADA.r], [SADA.x1 - SADA.x0 - 3, 7], [SADA.x1 - SADA.x0, 7]], { tone: "mid" }, {
-    inner: Ln(G.arcOf(F, 6, SADA.r, P) + G.arcOf(F, 10, SADA.r, P), { tone: "faint" }),
-    extra: Dots(G.dotsOf(F, SADA.x1 - SADA.x0, 4.6, 8, P, { all: true }), { size: 0.45, tone: "hi" }),
+const RADP = { x0: -94, x1: 24, y0: 45, y1: 47, h: 60, gap: 1, n: 3 };
+const radZ = (i) => HZ + 13 + i * (RADP.h + RADP.gap);
+for (let i = 0; i < RADP.n; i++) {
+  const z0 = radZ(i);
+  const z1 = z0 + RADP.h;
+  const fy = RADP.y1 + 0.02;
+  const tubes = Array.from({ length: 13 }, (_, j) => path3([[RADP.x0 + 5 + j * 9, fy, z0], [RADP.x0 + 5 + j * 9, fy, z1]])).join("");
+  box("rad.panel", [RADP.x0, RADP.y0, z0], [RADP.x1, RADP.y1, z1], { tone: i === RADP.n - 1 ? "hi" : "mid" }, {
+    r: 0.4,
+    steps: 2,
+    extra: Ln(tubes, { tone: "faint" }) + Ln(path3([[RADP.x1, RADP.y1, z0], [RADP.x1, RADP.y1, z1]]), { tone: "lo" }),
+    attrs: ` data-rad="${i}"`,
   });
+}
+for (let i = 0; i + 1 < RADP.n; i++) {
+  for (const x of [-70, -10]) disc("rad.hinge", G.frameAlong([x, RADP.y1 + 1, radZ(i) + RADP.h + RADP.gap / 2], [1, 0, 0]), -4, 4, 1, { tone: "lo" });
+}
+
+// ---------- solar wings, deployed: drive, boom, yoke and four panels on each side ----------
+const WING = { n: 4, w: 60, gap: 1, half: 62, z0: 101, z1: 103 };
+const WINGS = [
+  { side: -1, y: -4, ped: [[-126, -14, 62], [-114, 6, 93]], inner: -112 },
+  { side: 1, y: 10, ped: [[136, 2, 62], [148, 18, 93]], inner: 128 },
+];
+const WING_TIPS = [];
+for (const wg of WINGS) {
+  const sx = wg.side;
+  box("sada.pedestal", wg.ped[0], wg.ped[1], { tone: "lo" }, { extra: Dots([at([wg.ped[0][0] + 2, wg.ped[1][1], 66]), at([wg.ped[1][0] - 2, wg.ped[1][1], 66])], { size: 0.45, tone: "hi" }) });
+  const F = G.frameAlong([wg.inner, wg.y, 102], [sx, 0, 0]);
+  turned("sada.drum", F, [[0, 7], [3, 7], [3, 9], [22, 9], [22, 6], [28, 6]], { tone: "mid" }, {
+    inner: Ln(G.arcOf(F, 8, 9, P) + G.arcOf(F, 12, 9, P), { tone: "faint" }),
+  });
+  disc("wing.boom", F, 28, 64, 3, { tone: "hi" }, { inner: Ln(G.arcOf(F, 40, 3, P) + G.arcOf(F, 52, 3, P), { tone: "faint" }) });
+  const e = wg.inner + sx * 64;
+  const yoke = sx < 0 ? [e - 4, e] : [e, e + 4];
+  box("wing.yoke", [yoke[0], wg.y - 22, 96], [yoke[1], wg.y + 22, 108], { tone: "mid" }, { r: 0.6, steps: 2, extra: Dots([at([sx < 0 ? yoke[0] : yoke[1], wg.y - 18, 104]), at([sx < 0 ? yoke[0] : yoke[1], wg.y + 18, 104])], { size: 0.45, tone: "hi" }) });
+  const root = sx < 0 ? yoke[0] : yoke[1];
+  for (let i = 0; i < WING.n; i++) {
+    const a = root + sx * i * (WING.w + WING.gap);
+    const b = a + sx * WING.w;
+    const [x0, x1] = sx < 0 ? [b, a] : [a, b];
+    const y0 = wg.y - WING.half;
+    const y1 = wg.y + WING.half;
+    const rows = Array.from({ length: 11 }, (_, j) => k.lineOnTop([x0, y0 + (j + 1) * (2 * WING.half / 12)], [x1, y0 + (j + 1) * (2 * WING.half / 12)], WING.z1, P)).join("");
+    const cols = Array.from({ length: 5 }, (_, j) => k.lineOnTop([x0 + (j + 1) * (WING.w / 6), y0], [x0 + (j + 1) * (WING.w / 6), y1], WING.z1, P)).join("");
+    box("wing.panel", [x0, y0, WING.z0], [x1, y1, WING.z1], { tone: "hi" }, { r: 0.5, steps: 2, extra: Ln(rows + cols, { tone: "faint" }), attrs: ' data-part="cells"' });
+    if (i === WING.n - 1) WING_TIPS.push([sx < 0 ? x0 : x1, y0], [sx < 0 ? x0 : x1, y1]);
+    if (i + 1 < WING.n) {
+      const xg = b + sx * WING.gap / 2;
+      for (const dy of [-40, 40]) disc("wing.hinge", G.frameAlong([xg, wg.y + dy, WING.z1 + 1], [0, 1, 0]), -4, 4, 1, { tone: "lo" });
+    }
+  }
 }
 
 // ---------- pump package: loops A and B ----------
@@ -443,8 +391,8 @@ onTray(() => {
 });
 
 // ---------- plumbing between rack, pumps and radiator ----------
-line("pipe.hot", [[HOT_X, MAN_Y, 62], [HOT_X, MAN_Y, 166], [HOT_X, HEADER_Y, 166], [HOT_X, HEADER_Y, HZ + 4]], MAN_R, { tone: "hi", bend: 5, fittings: [true, true], kind: "hot", decor: qdOn(HOT_X) });
-line("pipe.radout", [[COLD_X, HEADER_Y, HZ + 4], [COLD_X, HEADER_Y, 176], [38, HEADER_Y, 176], [38, HEADER_Y, 72], [56, HEADER_Y, 72], [56, PKG.y1, 72]], MAN_R, { tone: "mid", bend: 5, fittings: [true, true], kind: "cold", rings: { pitch: 1.2, twist: 0.8, cross: true, fade: [0.1, 0.55] } });
+line("pipe.hot", [[HOT_X, MAN_Y, 62], [HOT_X, MAN_Y, 166], [HOT_X, HEADER_Y, 166], [HOT_X, HEADER_Y, HZ + 3]], MAN_R, { tone: "hi", bend: 5, fittings: [true, true], kind: "hot", decor: qdOn(HOT_X) });
+line("pipe.radout", [[COLD_X, HEADER_Y, HZ + 3], [COLD_X, HEADER_Y, 176], [38, HEADER_Y, 176], [38, HEADER_Y, 72], [56, HEADER_Y, 72], [56, PKG.y1, 72]], MAN_R, { tone: "mid", bend: 5, fittings: [true, true], kind: "cold", rings: { pitch: 1.2, twist: 0.8, cross: true, fade: [0.1, 0.55] } });
 line("pipe.supply", [[82, PKG.y1, 70], [82, 54, 70], [COLD_X, 54, 70], [COLD_X, MAN_Y, 70], [COLD_X, MAN_Y, HZ - 3]], MAN_R, { tone: "mid", bend: 5, fittings: [true, true], kind: "supply", decor: qdOn(COLD_X) });
 line("tank.feed", [[TANK.x1, TANK.y, TANK.z], [128, TANK.y, TANK.z], [128, -20, TANK.z], [140, -20, TANK.z], [140, -20, 70]], 0.8, { tone: "mid", bend: 3, fittings: [false, true], kind: "feed" });
 
@@ -487,7 +435,7 @@ const groups = R.items.map((item, index) => {
 });
 
 const LABEL_TEXT =
-  "SpaceX's AI1 compute satellite on its integration stand, wings and radiator stowed. The compute bay's front is open: a rack of 18 GPU trays, 9 NVLink switch trays and two power shelves, with one GPU tray slid out to show four GPU and two CPU cold plates joined by a coolant loop. Manifolds carry coolant to the pumps on the deck and up to the radiator folded on the roof; a harness brings power from the solar array drive. Laser terminals, star trackers, an argon tank, a Hall thruster and a battery sit on the deck.";
+  "SpaceX's AI1 compute satellite in orbit with both solar wings and its radiator deployed (wings and radiator shortened to fit). The compute bay's front is open: a rack of 18 GPU trays, 9 NVLink switch trays and two power shelves, with one GPU tray slid out to show four GPU and two CPU cold plates joined by a coolant loop. Manifolds carry coolant to the pumps on the deck and up to the radiator standing on the roof; a harness brings power from the left wing's solar array drive. Laser terminals, star trackers, an argon tank, a Hall thruster and a battery sit on the deck.";
 const svg = k.figureSvg({ width: W, height: H, label: LABEL_TEXT, body: [...back, `<g class="ai-sat">${groups.join("")}</g>`] });
 
 const AX = (v) => at(v).map((c, i) => c - at([0, 0, 0])[i]);
@@ -508,16 +456,16 @@ const body =
   `<style>${CSS}</style>` +
   k.plateHtml({
     fig: "Fig 1",
-    title: "AI1, compute bay open",
+    title: "AI1, deployed, bay open",
     hint: "Move to set load · T slides the tray",
     readout: `${s120.compute.toFixed(0)} kW · ${s120.flow.toFixed(1)} kg/s`,
     keys: [
       { mark: "lit", label: "The work: GPU cold plates on the pulled tray, and power or coolant moving through the lines" },
       { mark: "raised", label: "Rack: 18 GPU trays (72 GPUs, 36 CPUs), 9 NVLink switch trays, 2 power shelves" },
-      { mark: "edge", label: "Coolant: rack manifolds, two pumps, braided line to the stowed radiator" },
-      { mark: "flat", label: "Power: solar array drive and battery into the bottom power shelf" },
+      { mark: "edge", label: "Coolant: rack manifolds, two pumps, braided line up to the radiator" },
+      { mark: "flat", label: "Power: two solar wings on rotating drives, battery, harness into the bottom power shelf" },
     ],
-    caption: `SpaceX's AI1 on its integration stand before launch, with its ~70 m solar wings folded into the stack on the left and its ${M.radArea} m² liquid radiator folded on the roof. The rack draws ${M.peak} kW at peak and ${M.sustained} kW sustained, and every watt of it becomes heat: cold plates on each GPU and CPU pass it into water-glycol, the pumps move it at about ${s120.flow.toFixed(1)} kg/s at ${M.sustained} kW (a ${s120.dT.toFixed(0)} K rise), and the deployed radiator, held edge-on to the Sun, sheds it from both faces at around ${s120.radT.toFixed(0)} °C. Numbers come from one model: ${M.arrayArea.toFixed(0)} m² of array at 250 W/m², emissivity 0.9, a 12 K design rise. SpaceX has published the outline and named NVIDIA Rubin GPUs and Vera CPUs; the rack layout follows NVIDIA's NVL72, and the rest of the interior is an informed illustration, not SpaceX's drawing.`,
+    caption: `SpaceX's AI1 in its dawn-dusk orbit, with both solar wings turned to the Sun and its ${M.radArea} m² liquid radiator standing edge-on to it. The wings really span about 70 m and the radiator stands about 20 m tall, so both are drawn far shorter here to keep the compute bay readable. The rack draws ${M.peak} kW at peak and ${M.sustained} kW sustained, and every watt of it becomes heat: cold plates on each GPU and CPU pass it into water-glycol, the pumps move it at about ${s120.flow.toFixed(1)} kg/s at ${M.sustained} kW (a ${s120.dT.toFixed(0)} K rise), and the deployed radiator, held edge-on to the Sun, sheds it from both faces at around ${s120.radT.toFixed(0)} °C. Numbers come from one model: ${M.arrayArea.toFixed(0)} m² of array at 250 W/m², emissivity 0.9, a 12 K design rise. SpaceX has published the outline and named NVIDIA Rubin GPUs and Vera CPUs; the rack layout follows NVIDIA's NVL72, and the rest of the interior is an informed illustration, not SpaceX's drawing.`,
     body: `<div class="iso-stage ai-stage" tabindex="0" role="slider" aria-label="AI1 compute satellite. Left and right arrows set the compute load; T or Space slides the GPU tray in or out." aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">${svg}<span class="ai-sr" role="status" aria-live="polite" data-status></span></div>`,
   });
 
