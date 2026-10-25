@@ -1,0 +1,17 @@
+.ai-stage{touch-action:pan-y}
+.ai-stage:focus{outline:none}
+.ai-stage:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:6px}
+.ai-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.it[data-name^="tray."],.it[data-tray]{cursor:pointer}
+.ai-void{fill:var(--anatomy-shade-0);stroke:none}
+
+.it[data-hot] .tb-body,.it[data-hot] .tb-shine,.it[data-hot] .tb-shade{fill:var(--anatomy-lit)}
+.it[data-hot] .iso-edge{stroke:var(--anatomy-lit)}
+
+.it[data-chip][data-on]>.iso-solid>.iso-top{fill:var(--anatomy-lit-top);fill-opacity:var(--ai-heat,1)}
+.it[data-chip][data-on]>.iso-solid>.iso-edge{stroke:var(--anatomy-lit)}
+.it[data-chip][data-on]>.iso-solid>.iso-shade{fill:var(--anatomy-lit-shade)}
+.it[data-pump][data-on]>.iso-solid>.iso-edge{stroke:var(--anatomy-lit)}
+
+.ai-led circle{opacity:.25;transition:opacity .4s var(--anatomy-ease)}
+.it[data-chip] ~ .it .ai-led circle{opacity:.25}
