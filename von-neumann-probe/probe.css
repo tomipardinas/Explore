@@ -1,0 +1,12 @@
+.vn-stage{outline:none}
+.vn-stage:focus-visible{box-shadow:0 0 0 1px var(--anatomy-mid)}
+.vn-mouth{fill:var(--anatomy-shade-0);stroke:none}
+.vn-window{fill:var(--anatomy-shade-0);stroke:none}
+.vn-glow{fill:var(--vn-hot);stroke:none;opacity:0}
+.iso{--vn-hot:#ffb46b;--vn-plume:#ffd8a8}
+.iso[data-theme="light"]{--vn-hot:#e0661f;--vn-plume:#f08a3c}
+.vn-lamp[data-on] .iso-top{fill:var(--anatomy-lit)}
+.vn-lamp[data-on] .iso-edge{stroke:var(--anatomy-lit)}
+.vn-plume{fill:var(--vn-plume);stroke:none;filter:blur(2px)}
+.iso[data-theme="light"] .vn-plume{mix-blend-mode:multiply}
+.vn-tip{fill:var(--vn-hot);stroke:none}
